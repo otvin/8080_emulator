@@ -92,6 +92,16 @@ class Disassembler8080:
                               ]
 
 
+    def disassemble_space_invaders(self):
+        # These are the ranges that are code, not data, according to
+        # https://www.computerarcheology.com/Arcade/SpaceInvaders/Code.html
+        print(self.disassemble(0x0, 0x0BF4))
+        print(self.disassemble(0x1000, 0x13FD))
+        print(self.disassemble(0x1400, 0x19BB))
+        print(self.disassemble(0x19D1, 0x1A10))
+        print(self.disassemble(0x1A32, 0x1A90))
+
+
     # DATA TRANSFER GROUP #
 
     def _MOV(self, opcode, cur_addr):
@@ -826,7 +836,6 @@ class Disassembler8080:
         raise DisassemblyNotImplementedException("Invalid opcode: {}".format(opcode))
 
     def disassemble(self, start_addr, max_addr):
-        # trying to perform well
         cur_addr = start_addr
         ret_str = ""
         while cur_addr <= max_addr:
