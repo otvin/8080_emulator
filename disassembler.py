@@ -835,12 +835,20 @@ class Disassembler8080:
     def InvalidOpCode(self, opcode, cur_addr):
         raise DisassemblyNotImplementedException("Invalid opcode: {}".format(opcode))
 
-    def disassemble(self, start_addr, max_addr):
+    def disassemble(self, start_addr, max_addr, point_addr=None, breakpoint_list=[]):
+        # point_addr = address which will receive a pointer next to it
+
         cur_addr = start_addr
         ret_str = ""
         while cur_addr <= max_addr:
             opcode = self.memory[cur_addr]
             res = self.opcode_lookup[opcode](opcode, cur_addr)
+            if point_addr is not None and cur_addr == point_addr:
+                ret_str += "--->\t"
+            else:
+                ret_str += "\t"
+            if cur_addr in breakpoint_list:
+                ret_str += '*'
             ret_str += "{}: ".format(hexy(cur_addr, 4))
             ret_str += get_opcode_display(self.memory, cur_addr, res[1]) + res[0] + '\n'
             cur_addr += res[1]
