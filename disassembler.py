@@ -234,7 +234,7 @@ class Disassembler8080:
         # Exchange H and L with D and E
         # THe contents of registers H and L are exchanged with the contents of registers D and E
         # 1 cycle 4 states
-        return "EX DE,HL", 1, 1, 4
+        return "EX DE,HL\t; XCHG", 1, 1, 4
 
     # ARITHMETIC GROUP #
 
@@ -266,7 +266,7 @@ class Disassembler8080:
         # The contents of the second byte of the instruction is added to the content of the accumulator.  The
         # result is placed in the accumulator.
         # 2 cycles 7 states
-        ret_str = "ADD A, ${}".format(hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "ADD A, ${}\t; ADI data".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
     def _ADC(self, opcode, cur_addr):
@@ -329,7 +329,7 @@ class Disassembler8080:
         # The content of the second byte of the instruction is subtracted from the content of the accumulator.
         # The result is placed in the accumulator.
         # 2 cycles 7 states
-        ret_str = "SUB A, ${}".format(hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "SUB A, ${}\t; SUI data".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
     def _SBB(self, opcode, cur_addr):
@@ -371,7 +371,7 @@ class Disassembler8080:
             # Increment Register
             # The content of register r is incremented by one.  Note: All condition flags except CY are affected.
             # 1 cycle 5 states
-            ret_str = "INC {}".format(ddd_sss_translation[ddd])
+            ret_str = "INC {}\t; INR r".format(ddd_sss_translation[ddd])
             cycles = 1
             states = 5
         else:
@@ -380,7 +380,7 @@ class Disassembler8080:
             # The content of the memory location whose address is contained in the H and L registers is incremented
             # by one.  Note: All condition flags except CY are affected.
             # 3 cycles 10 states
-            ret_str = "INC (HL)"
+            ret_str = "INC (HL)\t; INR M"
             cycles = 3
             states = 10
         return ret_str, 1, cycles, states
@@ -392,7 +392,7 @@ class Disassembler8080:
             # Decrement Register
             # The content of register r is decremented by one.  Note: All condition flags except CY are affected.
             # 1 cycle 5 states
-            ret_str = "DEC {}".format(ddd_sss_translation[ddd])
+            ret_str = "DEC {}\t; DCR r".format(ddd_sss_translation[ddd])
             cycles = 1
             states = 5
         else:
@@ -401,7 +401,7 @@ class Disassembler8080:
             # The content of the memory location whose address is contained in the H and L registers is decremented
             # by one.  Note: All condition flags except CY are affected.
             # 3 cycles 10 states
-            ret_str = "DEC (HL)"
+            ret_str = "DEC (HL)\t; DCR M"
             cycles = 3
             states = 10
         return ret_str, 1, cycles, states
@@ -412,7 +412,7 @@ class Disassembler8080:
         # The content of the register pair rp is incremented by one.  No condition flags are affected.
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
-        ret_str = "INC {}".format(rp_translation[rp])
+        ret_str = "INC {}\t; INX rp".format(rp_translation[rp])
         return ret_str, 1, 1, 5
 
     def _DCX(self, opcode, cur_addr):
@@ -421,7 +421,7 @@ class Disassembler8080:
         # The content of the register pair rp is decremented by one.  No condition flags are affected.
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
-        ret_str = "DEC {}".format(rp_translation[rp])
+        ret_str = "DEC {}\t; DCX rp".format(rp_translation[rp])
         return ret_str, 1, 1, 5
 
     def _DAD(self, opcode, cur_addr):
@@ -432,7 +432,7 @@ class Disassembler8080:
         # of the double precision add; otherwise it is reset.
         # 3 cycles 10 states
         rp = (opcode >> 4) & 0x3
-        ret_str = "ADD HL,{}".format(rp_translation[rp])
+        ret_str = "ADD HL,{}\t; DAD rp".format(rp_translation[rp])
         return ret_str, 1, 3, 10
 
     def _DAA(self, opcode, cur_addr):
@@ -458,7 +458,7 @@ class Disassembler8080:
             # The content of register r is logically anded with teh content of the accumulator.  The result is
             # placed in the accumulator.  The CY flag is cleared.
             # 1 cycle 4 states
-            ret_str = "AND {}".format(ddd_sss_translation[sss])
+            ret_str = "AND {}\t; ANA r".format(ddd_sss_translation[sss])
             cycles = 1
             states = 4
         else:
@@ -468,7 +468,7 @@ class Disassembler8080:
             # anded with the content of the accumulator.  The result is placed in the accumulator.  The CY flag is
             # cleared.
             # 2 cycles 7 states
-            ret_str = "AND (HL)"
+            ret_str = "AND (HL)\t; ANA M"
             cycles = 2
             states = 7
         return ret_str, 1, cycles, states
@@ -479,7 +479,7 @@ class Disassembler8080:
         # The content of the second byte of the instruction is logically anded with the contents of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        ret_str = "AND ${}".format(hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "AND ${}\t; ANI data".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
     def _XRA(self, opcode, cur_addr):
@@ -490,7 +490,7 @@ class Disassembler8080:
             # The content of register r is logically exclusive-or'd with the content of the accumulator.  The result
             # is placed in the accumulator.  The CY and AC flags are cleared.
             # 1 cycle 4 states
-            ret_str = "XOR {}".format(ddd_sss_translation[sss])
+            ret_str = "XOR {}\t; XRA r".format(ddd_sss_translation[sss])
             cycles = 1
             states = 4
         else:
@@ -500,7 +500,7 @@ class Disassembler8080:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            ret_str = "XOR (HL)"
+            ret_str = "XOR (HL)\t; XRA M"
             cycles = 2
             states = 7
         return ret_str, 1, cycles, states
@@ -511,7 +511,7 @@ class Disassembler8080:
         # The content of the second byte of the instruction is exclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        ret_str = "XOR ${}".format(hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "XOR ${}\t; XRI data".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
     def _ORA(self, opcode, cur_addr):
@@ -522,7 +522,7 @@ class Disassembler8080:
             # The content of register r is logically inclusive-or'd with the content of the accumulator.  The result
             # is placed in the accumulator.  The CY and AC flags are cleared.
             # 1 cycle 4 states
-            ret_str = "OR {}".format(ddd_sss_translation[sss])
+            ret_str = "OR {}\t; ORA r".format(ddd_sss_translation[sss])
             cycles = 1
             states = 4
         else:
@@ -532,7 +532,7 @@ class Disassembler8080:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            ret_str = "OR (HL)"
+            ret_str = "OR (HL)\t; ORA M"
             cycles = 2
             states = 7
         return ret_str, 1, cycles, states
@@ -543,7 +543,7 @@ class Disassembler8080:
         # The content of the second byte of the instruction is inclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        ret_str = "OR ${}".format(hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "OR ${}\t; ORI data".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
     def _CMP(self, opcode, cur_addr):
@@ -579,7 +579,7 @@ class Disassembler8080:
         # flag is set to 1 if (A) < (byte 2).
         # NOTE: My inference is that A is unchanged, even though this isn't stated.
         # 2 cycles 7 states
-        ret_str = "CMP ${}".format(hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "CMP ${}\t; CPI data".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
     def _RLC(self, opcode, cur_addr):

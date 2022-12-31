@@ -1,11 +1,22 @@
 from array import array
 
+
 class InvalidOpCodeException(Exception):
     pass
 
 
 class OpcodeNotImplementedException(Exception):
     pass
+
+
+# Cannot figure out how to make this a member variable of the CPU itself without creating a bunch of named functions
+# translation of "ccc:"
+#   0 = NZ (not zero); 1 = Z (zero); 2 = NC (no carry); 3 = C (carry)
+#   4 = PO (parity odd); 5 = PE (parity even); 6 = P (plus); 7 = M (minus)
+CPU_CONDITION_TEST = [lambda cpu:not cpu.zero_flag, lambda cpu:cpu.zero_flag,
+                      lambda cpu:not cpu.carry_flag, lambda cpu:cpu.carry_flag,
+                      lambda cpu:not cpu.parity_flag, lambda cpu:cpu.parity_flag,
+                      lambda cpu:not cpu.sign_flag, lambda cpu:cpu.sign_flag]
 
 
 class I8080cpu:
@@ -108,8 +119,9 @@ class I8080cpu:
                               self._RST
                               ]
 
-        # Next two are indexed based on valid values of rp.
+        # Next three are indexed based on valid values of rp.
         self.set_register_pair = [self.set_bc, self.set_de, self.set_hl, self.set_sp]
+        self.set_register_pair_as_word = [self.set_bc_as_word, self.set_de_as_word, self.set_hl_as_word]
         self.get_register_pair = [self.get_bc, self.get_de, self.get_hl]
 
     def set_parity_from_byte(self, n):
@@ -120,6 +132,19 @@ class I8080cpu:
         # Note the below shift treats 1 as odd and 0 as even; but the parity bit is set with False is odd and True
         # is even.
         self.parity_flag = (((0x6996 >> v) & 1) == 0)
+
+    def set_zero_from_byte(self, n):
+        if n == 0:
+            self.zero_flag = True
+        else:
+            self.zero_flag = False
+
+    def set_sign_from_byte(self, n):
+        # Per the Assembly Language Programming Manual, the sign flag is set to the value of bit 7
+        if n & 0x80:
+            self.sign_flag = True
+        else:
+            self.sign_flag = False
 
     @property
     def b(self):
@@ -184,12 +209,20 @@ class I8080cpu:
         self.b = b
         self.c = c
 
+    def set_bc_as_word(self, bc):
+        self.b = (bc >> 8) & 0xFF
+        self.c = bc & 0xFF
+
     def get_bc(self):
         return (self.b << 8 ) | self.c
 
     def set_de(self, d, e):
         self.d = d
         self.e = e
+
+    def set_de_as_word(self, de):
+        self.d = (de >> 8) & 0xFF
+        self.e = de & 0xFF
 
     def get_de(self):
         return (self.d << 8) | self.e
@@ -198,46 +231,46 @@ class I8080cpu:
         self.h = h
         self.l = l
 
+    def set_hl_as_word(self, hl):
+        self.h = (hl >> 8) & 0xFF
+        self.l = hl & 0xFF
+
     def get_hl(self):
         return (self.h << 8) | self.l
 
     def set_sp(self, high, low):
         self.sp = (high << 8) | low
 
-
-
-
     # DATA TRANSFER GROUP #
 
     def _MOV(self, opcode):
         ddd = (opcode >> 3) & 0x7
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if ddd != 0x06 and sss != 0x06:
             # MOV r1, r2
             # Move Register
             # The content of register r2 is moved to register r1
+            # Flags are not affected
             # 1 cycle, 5 states
-            ret_str += "LD {}, {}".format(ddd_sss_translation[ddd], ddd_sss_translation[sss])
+            self.registers[ddd] = self.registers[sss]
             cycles = 1
-            states = 5
         elif ddd != 0x06 and sss == 0x06:
             # MOV r, M
             # Move from memory
             # The content of the memory location, whose address is in registers H and L is moved to register r
+            # Flags are not affected
             # 2 cycles, 7 states
-            ret_str += "LD {}, (HL)".format(ddd_sss_translation[ddd])
+            self.registers[ddd] = self.memory[self.get_hl()]
             cycles = 2
-            states = 7
         else:  # ddd == 0x06 and sss != 0x06:
             # MOV M, r
             # Move to memory
             # The content of register r is moved to the memory location whose address is in registers H and L
+            # Flags are not affected
             # 2 cycles, 7 states
-            ret_str += "LD (HL), {}".format(ddd_sss_translation[sss])
+            self.memory[self.get_hl()] = self.registers[sss]
             cycles = 2
-            states = 7
-        return ret_str, 1, cycles, states
+        return 1, cycles
 
     def _MVI(self, opcode):
         ddd = (opcode >> 3) & 0x7
@@ -245,20 +278,19 @@ class I8080cpu:
             # MVI r, data
             # Move Immediate
             # The content of byte 2 of the instruction is moved to register r
+            # Flags are not affected
             # 2 cycles, 7 states
-            # The disassembled ROM at Computer Archaeology uses "LD" for Load instead of MVI.
             self.registers[ddd] = self.memory[self.pc + 1]
             cycles = 2
         else:
-            raise OpcodeNotImplementedException(opcode)
             # MVI M, data
             # Move to memory immediate
             # The content of byte 2 of the instruction is moved to the memory location whose address is in
             # registers H and L
+            # Flags are not affected
             # 3 cycles 10 states
-            ret_str += "LD (HL), ${}".format(hexy(self.memory[cur_addr + 1], 2))
+            self.memory[self.get_hl()] = self.memory[self.pc + 1]
             cycles = 3
-            states = 10
         return 2, cycles
 
     def _LXI(self, opcode):
@@ -266,6 +298,7 @@ class I8080cpu:
         # Load register pair immediate
         # Byte 3 of the instruction is moved into the high-order register (rh) of the register pair rp.
         # Byte 2 of the instruction is moved into the low-order register (rl) of the register pair rp.
+        # Flags are not affected.
         # 3 cycles 10 states
         rp = (opcode >> 4) & 0x3
         high_byte = self.memory[self.pc + 2]
@@ -503,25 +536,29 @@ class I8080cpu:
 
     def _DCR(self, opcode):
         ddd = (opcode >> 3) & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if ddd != 0x6:
             # DCR r
             # Decrement Register
             # The content of register r is decremented by one.  Note: All condition flags except CY are affected.
             # 1 cycle 5 states
-            ret_str = "DEC {}".format(ddd_sss_translation[ddd])
+            new_val = (self.registers[ddd] - 1) & 0xFF
+            self.registers[ddd] = new_val
             cycles = 1
-            states = 5
         else:
             # DCR M
             # Decrement Memory
             # The content of the memory location whose address is contained in the H and L registers is decremented
             # by one.  Note: All condition flags except CY are affected.
             # 3 cycles 10 states
-            ret_str = "DEC (HL)"
+            new_val = (self.memory[self.get_hl()] - 1) & 0xFF
+            self.memory[self.get_hl()] = new_val
             cycles = 3
-            states = 10
-        return ret_str, 1, cycles, states
+
+        self.set_zero_from_byte(new_val)
+        self.set_sign_from_byte(new_val)
+        self.set_parity_from_byte(new_val)
+        self.auxiliary_carry_flag = False
+        return 1, cycles
 
     def _INX(self, opcode):
         # INX rp
@@ -529,9 +566,8 @@ class I8080cpu:
         # The content of the register pair rp is incremented by one.  No condition flags are affected.
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "INC {}".format(rp_translation[rp])
-        return ret_str, 1, 1, 5
+        self.set_register_pair_as_word[rp]((self.get_register_pair[rp]() + 1) & 0xFFFF)
+        return 1, 1
 
     def _DCX(self, opcode):
         # DCX rp
@@ -539,9 +575,8 @@ class I8080cpu:
         # The content of the register pair rp is decremented by one.  No condition flags are affected.
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "DEC {}".format(rp_translation[rp])
-        return ret_str, 1, 1, 5
+        self.set_register_pair_as_word[rp]((self.get_register_pair[rp]() - 1) & 0xFFFF)
+        return 1, 1
 
     def _DAD(self, opcode):
         # DAD rp
@@ -672,19 +707,31 @@ class I8080cpu:
         ret_str = "OR ${}".format(hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 2, 2, 7
 
+    def do_compare(self, val):
+        # executes CMP / CPI comparing the val to the accumulator
+        tmp = (self.a - val) & 0xFF
+        self.set_parity_from_byte(tmp)
+        self.set_zero_from_byte(tmp)
+        self.set_sign_from_byte(tmp)
+        if self.a < val:
+            self.carry_flag = True
+        else:
+            self.carry_flag = False
+        self.auxiliary_carry_flag = False
+
     def _CMP(self, opcode):
+        # https://retrocomputing.stackexchange.com/questions/5953/carry-flag-in-8080-8085-subtraction/5956#5956
+        # Note that in CMP and Subtraction, the carry flag is set based on the unsigned values.
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # CMP r
             # Compare Register
-            # The content of register r is subtracted from the accumulator.  THe accumulator remains unchanged.
+            # The content of register r is subtracted from the accumulator.  The accumulator remains unchanged.
             # The condition flags are set as a result of the subtraction.  The Z flag is set to 1 if (A) = (r).
             # The CY flag is set to 1 if (A) < (r)
             # 1 cycle 4 states
-            ret_str = "CMP {}".format(ddd_sss_translation[sss])
+            self.do_compare(self.registers[sss])
             cycles = 1
-            states = 4
         else:
             # CMP M
             # Compare memory
@@ -693,22 +740,20 @@ class I8080cpu:
             # of the subtraction.  The Z flag is set to 1 if (A) = ((H)(L)).  The CY flag is set to 1 if (A) <
             # ((H)(L)).
             # 2 cycles 7 states
-            ret_str = "CMP (HL)"
+            self.do_compare(self.memory[self.get_hl])
             cycles = 2
-            states = 7
-        return ret_str, 1, cycles, states
+        return 1, cycles
 
     def _CPI(self, opcode):
         # CPI data
         # Compare immediate
-        # THe content of teh second byte of the instruction is subtracted from the accumulator.  The condition
+        # THe content of the second byte of the instruction is subtracted from the accumulator.  The condition
         # flags are set by the result of the subtraction.  The Z flag is set to 1 if (A) = (byte 2).  The CY
         # flag is set to 1 if (A) < (byte 2).
         # NOTE: My inference is that A is unchanged, even though this isn't stated.
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "CMP ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.do_compare(self.memory[self.pc + 1])
+        return 2, 2
 
     def _RLC(self, opcode):
         # RLC
@@ -778,27 +823,34 @@ class I8080cpu:
     # BRANCH GROUP
 
     def _JMP(self, opcode):
+        global CPU_CONDITION_TEST
+
         if opcode == 0xC3:
             # JMP addr
             # Control is transferred to the instruction whose address is specified in byte 3 and byte 2 of
             # the current instruction
+            # Flags are not affected
             # 3 cycles 10 states
             # Because this updates PC, return 0 for pc_increments so that the cycle() function does not further
             # increment PC.
             self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
-            return 0, 3
+            pc_increments = 0
         else:
-            raise OpcodeNotImplementedException(opcode)
             # JMP condition addr
             # If the specified condition is true, control is transferred to the instruction whose address is
             # specified in byte 3 and byte 2 of the current instruction; otherwise, control continues sequentially.
+            # Flags are not affected
             # 3 cycles 10 states
-            ccc = (opcode >> 3) & 0x7
-            ret_str = "JMP {} ${}{}".format(ccc_translation[ccc],
-                                            hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 3, 3, 10
+            if CPU_CONDITION_TEST[(opcode >> 3) & 0x7](self):
+                self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+                pc_increments = 0
+            else:
+                pc_increments = 3  # skip past the 2 byte address
+        return pc_increments, 3
 
     def _CALL(self, opcode):
+        global CPU_CONDITION_TEST
+
         if opcode == 0xCD:
             # CALL addr
             # The high-order 8 bits of the next instruction address are moved to the memory address that is one
@@ -807,48 +859,64 @@ class I8080cpu:
             # register SP is decremented by 2.  Control is transferred to the instruction whose address is specified
             # in byte 3 and byte 2 of the current instruction.
             # So basically - (SP) gets PC + 3 / PC + 4, decrement SP, jump to the address specified in bytes 2 & 3
+            # Flags are not affected.
             # 5 cycles 17 states
-            self.memory[self.sp - 1] = (self.pc >> 8)
-            self.memory[self.sp - 2] = (self.pc & 0xff)
+            self.memory[self.sp - 1] = ((self.pc + 3) >> 8)
+            self.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
             self.sp -= 2
             self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
-            return 0, 5
+            pc_increments = 0
+            cycles = 5
         else:
-            raise OpcodeNotImplementedException(opcode)
             # CALL condition addr
             # If the specified condition is true, the actions specified in the CALL instruction (see above) are
             # performed; otherwise, control continues sequentially
+            # Flags are not affected
             # If condition true:  5 cycles / 17 states
             # If condition false: 3 cycles / 11 states
-            ccc = (opcode >> 3) & 0x7
-            ret_str = "CALL {} ${}{}".format(ccc_translation[ccc],
-                                             hexy(self.memory[cur_addr + 2], 2),
-                                             hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 3, 5, 17  # cycles/states not accurate if CALL condition = false
+            if CPU_CONDITION_TEST[(opcode >> 3) & 0x7](self):
+                self.memory[self.sp - 1] = ((self.pc + 3) >> 8)
+                self.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
+                self.sp -= 2
+                self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+                pc_increments = 0
+                cycles = 5
+            else:
+                pc_increments = 3
+                cycles = 3
+        return pc_increments, cycles
 
     def _RET(self, opcode):
-        raise OpcodeNotImplementedException(opcode)
+        global CPU_CONDITION_TEST
+
         if opcode == 0xC9:
             # RET
             # THe content of the memory location whose address is specified in register SP is moved to the low
-            # order eight bits of register PC.  THe content of the memory location whose address is one more than
+            # order eight bits of register PC.  The content of the memory location whose address is one more than
             # the content of register SP is moved to the high-order 8 bits of register PC.  THe content of register
             # SP is incremented by 2.
+            # Flags are not affected
             # 3 cycles 10 states
-            ret_str = "RET"
+            self.pc = (self.memory[self.sp + 1] << 8) | self.memory[self.sp]
+            self.sp += 2
+            pc_increments = 0
             cycles = 3
-            states = 10
         else:
             # RET condition
             # If the specified condition is true, the actions specified in the RET instruction (see above) are
             # performed; otherwise, control continues sequentially.
+            # Flags are not affected
             # If condition true: 3 cycles / 11 states
             # If condition false: 1 cycles / 5 states
-            ccc = (opcode >> 3) & 0x7
-            ret_str = "RET {}".format(ccc_translation[ccc])
-            cycles = 3
-            states = 11
-        return ret_str, 1, cycles, states  # cycles/states not accurate if RET condition = false
+            if CPU_CONDITION_TEST[(opcode >> 3) & 0x7](self):
+                self.pc = (self.memory[self.sp + 1] << 8) | self.memory[self.sp]
+                self.sp += 2
+                pc_increments = 0
+                cycles = 3
+            else:
+                pc_increments = 1
+                cycles = 1
+        return pc_increments, cycles
 
     def _RST(self, opcode):
         # RST n
@@ -1007,8 +1075,8 @@ class I8080cpu:
 
     def debug_dump(self):
         ret_str = ""
-        ret_str += "PC: 0x{}\n".format(hex(self.pc).upper()[2:])
-        ret_str += "A: 0x{}\n".format(hex(self.a).upper()[2:])
+        ret_str += "PC: 0x{}\n".format(hex(self.pc).zfill(4).upper()[2:])
+        ret_str += "A: 0x{}\n".format(hex(self.a).zfill(2).upper()[2:])
         # ret_str += "Flags: 0x{}\n".format(hex(self.flags).upper()[2:])
         ret_str += "Flags: "
         if self.zero_flag:
