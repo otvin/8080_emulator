@@ -113,7 +113,7 @@ class Disassembler8080:
             # Move Register
             # The content of register r2 is moved to register r1
             # 1 cycle, 5 states
-            ret_str += "LD {}, {}".format(ddd_sss_translation[ddd], ddd_sss_translation[sss])
+            ret_str += "LD {}, {}\t; MOV r1, r2".format(ddd_sss_translation[ddd], ddd_sss_translation[sss])
             cycles = 1
             states = 5
         elif ddd != 0x06 and sss == 0x06:
@@ -121,7 +121,7 @@ class Disassembler8080:
             # Move from memory
             # The content of the memory location, whose address is in registers H and L is moved to register r
             # 2 cycles, 7 states
-            ret_str += "LD {}, (HL)".format(ddd_sss_translation[ddd])
+            ret_str += "LD {}, (HL)\t; MOV r, M".format(ddd_sss_translation[ddd])
             cycles = 2
             states = 7
         else:  # ddd == 0x06 and sss != 0x06:
@@ -129,7 +129,7 @@ class Disassembler8080:
             # Move to memory
             # The content of register r is moved to the memory location whose address is in registers H and L
             # 2 cycles, 7 states
-            ret_str += "LD (HL), {}".format(ddd_sss_translation[sss])
+            ret_str += "LD (HL), {}\t; MOV M, r".format(ddd_sss_translation[sss])
             cycles = 2
             states = 7
         return ret_str, 1, cycles, states
@@ -143,7 +143,7 @@ class Disassembler8080:
             # The content of byte 2 of the instruction is moved to register r
             # 2 cycles, 7 states
             # The disassembled ROM at Computer Archaeology uses "LD" for Load instead of MVI.
-            ret_str += "LD {}, ${}".format(ddd_sss_translation[ddd], hexy(self.memory[cur_addr + 1], 2))
+            ret_str += "LD {}, ${}\t;MVI r, data".format(ddd_sss_translation[ddd], hexy(self.memory[cur_addr + 1], 2))
             cycles = 2
             states = 7
         else:
@@ -152,7 +152,7 @@ class Disassembler8080:
             # The content of byte 2 of the instruction is moved to the memory location whose address is in
             # registers H and L
             # 3 cycles 10 states
-            ret_str += "LD (HL), ${}".format(hexy(self.memory[cur_addr + 1], 2))
+            ret_str += "LD (HL), ${}\t;MVI M, data".format(hexy(self.memory[cur_addr + 1], 2))
             cycles = 3
             states = 10
         return ret_str, 2, cycles, states
@@ -164,9 +164,9 @@ class Disassembler8080:
         # Byte 2 of the instruction is moved into the low-order register (rl) of the register pair rp.
         # 3 cycles 10 states
         rp = (opcode >> 4) & 0x3
-        ret_str = "LD {}, ${}{}".format(rp_translation[rp],
-                                        hexy(self.memory[cur_addr + 2], 2),
-                                        hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "LD {}, ${}{}\t;LXI rp, data 16".format(rp_translation[rp],
+                                                          hexy(self.memory[cur_addr + 2], 2),
+                                                          hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 3, 3, 10
 
     def _LDA(self, opcode, cur_addr):
@@ -175,7 +175,7 @@ class Disassembler8080:
         # The content of the memory location, whose address is specified in byte 2 and byte 3 of the
         # instruction, is moved to register A.
         # 4 cycles 13 states
-        ret_str = "LD A, (${}{})".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "LD A, (${}{})\t; LDA".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 3, 4, 13
 
     def _STA(self, opcode, cur_addr):
@@ -184,8 +184,8 @@ class Disassembler8080:
         # The content of the accumulator is moved to the memory location whose address is specified in byte 2
         # and byte 3 of the instruction
         # 4 cycles 13 states
-        ret_str = "LD (${}{}), A".format(hexy(self.memory[cur_addr + 2], 2),
-                                         hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "LD (${}{}), A\t; STA".format(hexy(self.memory[cur_addr + 2], 2),
+                                                hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 3, 4, 13
 
     def _LHLD(self, opcode, cur_addr):
@@ -195,7 +195,8 @@ class Disassembler8080:
         # instruction,is moved to register L.  The content of the memory location at the succeeding address is
         # moved to register H.
         # 5 cycles 16 states
-        ret_str = "LD HL, (${}{})".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "LD HL, (${}{})\t; LHLD".format(hexy(self.memory[cur_addr + 2], 2),
+                                                  hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 3, 5, 16
 
     def _SHLD(self, opcode, cur_addr):
@@ -204,7 +205,8 @@ class Disassembler8080:
         # The content of register L is moved to the memory location whose address is specified in byte 2 and
         # byte 3.  The content of register H is moved to the succeeding memory location.
         # 5 cycles 16 states
-        ret_str = "LD (${}{}), HL".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
+        ret_str = "LD (${}{}), HL\t; SHLD".format(hexy(self.memory[cur_addr + 2], 2),
+                                                  hexy(self.memory[cur_addr + 1], 2))
         return ret_str, 3, 5, 16
 
     def _LDAX(self, opcode, cur_addr):
@@ -220,7 +222,7 @@ class Disassembler8080:
     def _STAX(self, opcode, cur_addr):
         # STAX rp
         # Store accumulator indirect
-        # The content of register A is moved to teh memory location whose address is in the register pair rp.
+        # The content of register A is moved to the memory location whose address is in the register pair rp.
         # Note: only register pairs rp=B (registers B and C) or rp=D (registers D and E) may be specified.
         # 2 cycles 7 states
         rp = (opcode >> 4) & 0x3
@@ -731,7 +733,7 @@ class Disassembler8080:
         rp = (opcode >> 4) & 0x3
         if rp != 0x3:
             # PUSH rp
-            # The content of thh high-order register of register pair rp is moved to the memory location whose
+            # The content of the high-order register of register pair rp is moved to the memory location whose
             # address is one less than the content of register SP.  The content of the low-order register of
             # register pair rp is moved to the memory location whose address is two less than the content of
             # register SP.  The content of register SP is decremented by 2.  Note: Register pair rp = SP may
@@ -842,14 +844,23 @@ class Disassembler8080:
         ret_str = ""
         while cur_addr <= max_addr:
             opcode = self.memory[cur_addr]
-            res = self.opcode_lookup[opcode](opcode, cur_addr)
-            if point_addr is not None and cur_addr == point_addr:
-                ret_str += "--->\t"
-            else:
-                ret_str += "\t"
-            if cur_addr in breakpoint_list:
-                ret_str += '*'
-            ret_str += "{}: ".format(hexy(cur_addr, 4))
-            ret_str += get_opcode_display(self.memory, cur_addr, res[1]) + res[0] + '\n'
-            cur_addr += res[1]
+            # if we are looking at data, or if we are looking back 10 bytes and it doesn't land at a start of an
+            # instruction, we can get an invalid opcode but it's not really an error.
+
+            try:
+                res = self.opcode_lookup[opcode](opcode, cur_addr)
+                if point_addr is not None and cur_addr == point_addr:
+                    ret_str += "--->\t"
+                else:
+                    ret_str += "\t"
+                if cur_addr in breakpoint_list:
+                    ret_str += '*'
+                ret_str += "{}: ".format(hexy(cur_addr, 4))
+                ret_str += get_opcode_display(self.memory, cur_addr, res[1]) + res[0] + '\n'
+                cur_addr += res[1]
+            except DisassemblyNotImplementedException:
+                ret_str += "\t{}: ".format(hexy(cur_addr, 4))
+                ret_str += get_opcode_display(self.memory, cur_addr, 1) + '??' + '\n'
+                cur_addr += 1
+
         return ret_str
