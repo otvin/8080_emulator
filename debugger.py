@@ -1,3 +1,5 @@
+import traceback
+
 class Debugger8080:
     def __init__(self, motherboard, disassembler):
         self.motherboard = motherboard
@@ -22,14 +24,12 @@ class Debugger8080:
         print("     x 0xM N     display contents of N bytes of memory starting with address M")
         print("     set 0xM 0xN set contents of memory address M with value N")
 
-    def debug(self):
+    def debug(self, total_cycles=0, total_instructions=0):
 
         breakpoint_list = []
         max_mem = self.motherboard.memory.max_mem()
         running = True
         continue_on_return = True  # do we keep running when we exit the debugger
-        total_cycles = 0  # Number cycles executed, so caller can catch up on interrupts
-        total_instructions = 0  # for use in comparing to other emulators
         while running:
             print(self.motherboard.cpu.debug_dump())
             print("\n")
@@ -53,8 +53,12 @@ class Debugger8080:
                     except:
                         print('invalid input {}'.format(x[1]))
                 for i in range(num_cycles):
-                    total_cycles += self.motherboard.cpu.cycle()
-                    total_instructions += 1
+                    try:
+                        total_cycles += self.motherboard.cpu.cycle()
+                    except:
+                        traceback.print_exc()
+                    else:
+                        total_instructions += 1
                     if self.motherboard.cpu.pc in breakpoint_list:
                         break
             elif next_cmd == "r":
@@ -63,8 +67,12 @@ class Debugger8080:
                     if self.motherboard.cpu.pc in breakpoint_list:
                         t = False
                     else:
-                        total_cycles += self.motherboard.cpu.cycle()
-                        total_instructions += 1
+                        try:
+                            total_cycles += self.motherboard.cpu.cycle()
+                        except:
+                            traceback.print_exc()
+                        else:
+                            total_instructions += 1
             elif next_cmd == "rr":
                 break
             elif next_cmd[0:3] == "set":
@@ -148,4 +156,4 @@ class Debugger8080:
             else:
                 print("Invalid command.")
 
-        return continue_on_return, total_cycles
+        return continue_on_return, total_cycles, total_instructions

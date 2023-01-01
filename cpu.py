@@ -56,6 +56,13 @@ class I8080cpu:
         # Plus/Positive = 0; Minus/Negative = 1
         self.sign_flag = False
         # Parity Odd = 0; Parity Even = 1
+        # NOTE: According to i8080 documentation, the parity flag is based on the number of bits that are set in
+        # the byte - 00010001 is even parity even though it is an odd number (17 in base 10).  However, according to
+        # https://en.wikipedia.org/wiki/Parity_flag, x86 processors changed so it looks at whether the least significant
+        # bit is set - so the flag set means the number is odd, and the flag reset (meaning it is 0) means the
+        # number is even.  I have seen many other 8080 emulators use this definition of parity flag.  My inference is
+        # that parity flag is not used in the Space Invaders game, so emulators for that game are not impacted by
+        # the incorrectness of their calculations of the flag.
         self.parity_flag = False
         # Used in DAA only
         self.auxiliary_carry_flag = False
@@ -122,7 +129,7 @@ class I8080cpu:
         # Next three are indexed based on valid values of rp.
         self.set_register_pair = [self.set_bc, self.set_de, self.set_hl, self.set_sp]
         self.set_register_pair_as_word = [self.set_bc_as_word, self.set_de_as_word, self.set_hl_as_word]
-        self.get_register_pair = [self.get_bc, self.get_de, self.get_hl]
+        self.get_register_pair = [self.get_bc, self.get_de, self.get_hl, self.get_sp]
 
     def set_parity_from_byte(self, n):
         # http://www.graphics.stanford.edu/~seander/bithacks.html#ParityParallel
@@ -145,6 +152,29 @@ class I8080cpu:
             self.sign_flag = True
         else:
             self.sign_flag = False
+
+    def get_byte_from_flags(self):
+        # Because there are only 5 condition flags, PUSH PWS formats the flags into an eight-bit byte by setting bits 3
+        # and 5 always to zero and bit one is always set to 1.
+        retval = 0x02  # bits 3 and 5 zero, bit one is 1.
+        if self.sign_flag:
+            retval |= 0x80
+        if self.zero_flag:
+            retval |= 0x40
+        if self.auxiliary_carry_flag:
+            retval |= 0x10
+        if self.parity_flag:
+            retval |= 0x04
+        if self.carry_flag:
+            retval |= 0x01
+        return retval
+
+    def set_flags_from_byte(self, n):
+        self.sign_flag = bool(n & 0x80)
+        self.zero_flag = bool(n & 0x40)
+        self.auxiliary_carry_flag = bool(n & 0x10)
+        self.parity_flag = bool(n & 0x04)
+        self.carry_flag = bool(n & 0x01)
 
     @property
     def b(self):
@@ -214,7 +244,7 @@ class I8080cpu:
         self.c = bc & 0xFF
 
     def get_bc(self):
-        return (self.b << 8 ) | self.c
+        return (self.b << 8) | self.c
 
     def set_de(self, d, e):
         self.d = d
@@ -240,6 +270,10 @@ class I8080cpu:
 
     def set_sp(self, high, low):
         self.sp = (high << 8) | low
+
+    def get_sp(self):
+        # needed for things like _DAD
+        return self.sp
 
     # DATA TRANSFER GROUP #
 
@@ -372,9 +406,15 @@ class I8080cpu:
         # XCHG
         # Exchange H and L with D and E
         # THe contents of registers H and L are exchanged with the contents of registers D and E
+        # Flags are not affected
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "EX DE,HL", 1, 1, 4
+        tmp_d = self.d
+        tmp_e = self.e
+        self.d = self.h
+        self.e = self.l
+        self.h = tmp_d
+        self.l = tmp_e
+        return 1, 1
 
     # ARITHMETIC GROUP #
 
@@ -584,11 +624,18 @@ class I8080cpu:
         # The content of the register pair rp is added to the register pair H and L.  THe result is placed in
         # the register pair H and L.  Note: Only the CY flag is affected.  If is set if there is a carry out
         # of the double precision add; otherwise it is reset.
+        # Only the CY flag is affected, and only if there is a carry out of the 16-bit addition.
+        # The Programming manual notes - DAD HL (rp 0x2) is, in effect HL = 2xHL - or a left shift by 1.  However
+        # I don't think it would be any faster here to take advantage of that, as it would take an extra branch.
         # 3 cycles 10 states
         rp = (opcode >> 4) & 0x3
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "ADD HL,{}".format(rp_translation[rp])
-        return ret_str, 1, 3, 10
+        new_val = self.get_hl() + self.get_register_pair[rp]()
+        if new_val > 0xFFFF:
+            self.carry_flag = True
+        else:
+            self.carry_flag = False
+        self.set_hl_as_word(new_val & 0xFFFF)
+        return 1, 3
 
     def _DAA(self, opcode):
         # DAA
@@ -946,16 +993,18 @@ class I8080cpu:
 
     def _PUSH(self, opcode):
         rp = (opcode >> 4) & 0x3
-        raise OpcodeNotImplementedException(opcode)
         if rp != 0x3:
             # PUSH rp
-            # The content of thh high-order register of register pair rp is moved to the memory location whose
+            # The content of the high-order register of register pair rp is moved to the memory location whose
             # address is one less than the content of register SP.  The content of the low-order register of
             # register pair rp is moved to the memory location whose address is two less than the content of
             # register SP.  The content of register SP is decremented by 2.  Note: Register pair rp = SP may
             # not be specified
+            # Flags are not affected
             # 3 cycles 11 states
-            ret_str = "PUSH {}".format(rp_translation[rp])
+            tmp = self.get_register_pair[rp]()
+            self.memory[self.sp - 1] = tmp >> 8
+            self.memory[self.sp - 2] = tmp & 0xFF
         else:
             # PUSH PSW
             # Push processor status word
@@ -972,31 +1021,37 @@ class I8080cpu:
             # lsb = Carry, then in order: a bit fixed at 1, Parity, a bit fixed at 0, Auxiliary Carry, a bit fixed at 0,
             # Zero, and then msb = Sign.
             #
+            # Flags are not affected.
             # 3 cycles 11 states
-            ret_str = "PUSH AF"
-        return ret_str, 1, 3, 11
+            self.memory[self.sp - 1] = self.a
+            self.memory[self.sp - 2] = self.get_byte_from_flags()
+        self.sp -= 2
+        return 1, 3
 
     def _POP(self, opcode):
         rp = (opcode >> 4) & 0x3
-        raise OpcodeNotImplementedException(opcode)
         if rp != 0x3:
             # POP rp
             # The content of the memory location, whose address is specified by the content of register SP, is
             # moved to the low-order register of register pair rp.  THe content of the memory location, whose
-            # address is one more than teh content of register SP, is moved to the high-order register of register
+            # address is one more than the content of register SP, is moved to the high-order register of register
             # pair rp.  The content of register SP is incremented by 2.  Note: Register pair rp = SP may not be
             # specified.
+            # Flags are not affected
             # 3 cycles 10 states
-            ret_str = "POP {}".format(rp_translation[rp])
+            self.set_register_pair[rp](self.memory[self.sp + 1], self.memory[self.sp])
         else:
             # POP PSW
             # Pop processor status word
             # The content of the memory location whose address is specified by the content of register SP is used
-            # to restore teh condition flags.  THe content of the memory location whose address is one more than the
+            # to restore the condition flags.  The content of the memory location whose address is one more than the
             # content of register SP is moved to register A.  The content of register SP is incremented by 2.
+            # All Flags are affected as they are restored from the stack.
             # 3 cycles 10 states
-            ret_str = "POP AF"
-        return ret_str, 1, 3, 10
+            self.set_flags_from_byte(self.memory[self.sp])
+            self.a = self.memory[self.sp + 1]
+        self.sp += 2
+        return 1, 3
 
     def _XTHL(self, opcode):
         # XTHL
@@ -1004,17 +1059,25 @@ class I8080cpu:
         # The content of the L register is exchanged with the content of the memory location whose address is
         # specified by the content of register SP.  The content of the H register is exchanged with the content
         # of the memory location whose address is one more than the content of register SP.
+        # The stack pointer register remains unchanged following execution of the XTHL instruction.
+        # Flags are not affected
         # 5 cycles 18 states
-        raise OpcodeNotImplementedException(opcode)
-        return "XTHL", 1, 5, 18
+        tmp_h = self.h
+        tmp_l = self.l
+        self.h = self.memory[self.sp + 1]
+        self.l = self.memory[self.sp]
+        self.memory[self.sp] = tmp_l
+        self.memory[self.sp + 1] = tmp_h
+        return 1, 5
 
     def _SPHL(self, opcode):
         # SPHL
         # Move HL to SP
         # The contents of registers H and L (16 bits) are moved to register SP.
+        # Flags are not affected
         # 1 cycle 5 states
-        raise OpcodeNotImplementedException(opcode)
-        return "SPHL", 1, 1, 5
+        self.sp = self.get_hl
+        return 1, 1
 
     def _IN(self, opcode):
         # IN port
@@ -1030,10 +1093,16 @@ class I8080cpu:
         # Output
         # The content of register A is placed on the eight bit bi-directional data bus for transmission to the
         # specified port.
+        # Flags are not affected
         # 3 cycles 10 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "OUT (OUT ${}), A".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 3, 10
+        #
+        # https://www.computerarcheology.com/Arcade/SpaceInvaders/Hardware.html#output
+        # Port 2 - bits 0, 1, 2 are the amount of the shift - see "Dedicated Shift Hardware" on the above page
+        # Port 3 - Sounds
+        # Port 5 - Sounds
+        # Port 6 - Watchdog
+        self.motherboard.handle_output(self.memory[self.pc + 1], self.a)
+        return 2, 3
 
     def _EI(self, opcode):
         # EI
@@ -1077,7 +1146,8 @@ class I8080cpu:
         ret_str = ""
         ret_str += "PC: 0x{}\n".format(hex(self.pc).zfill(4).upper()[2:])
         ret_str += "A: 0x{}\n".format(hex(self.a).zfill(2).upper()[2:])
-        # ret_str += "Flags: 0x{}\n".format(hex(self.flags).upper()[2:])
+        # Next line is useful when comparing to https://bluishcoder.co.nz/js8080/
+        ret_str += "Flags: 0x{}\n".format(hex(self.get_byte_from_flags()).upper()[2:])
         ret_str += "Flags: "
         if self.zero_flag:
             ret_str += "Z, "
