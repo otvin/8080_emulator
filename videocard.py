@@ -5,10 +5,17 @@ SCALE_FACTOR = 1
 PIXEL_OFF = (0, 0, 0)
 PIXEL_ON = (255, 255, 255)
 
+def color_from_pos_in_byte(byte, pos):
+    global PIXEL_ON, PIXEL_OFF
+    if (byte >> pos) & 1:
+        return PIXEL_ON
+    else:
+        return PIXEL_OFF
+
 
 class SpaceInvadersScreen:
     # 1 bit per pixel - other 8080-based games had better graphics
-    def __init__(self, motherboard, xsize=256, ysize=224):
+    def __init__(self, motherboard, xsize=224, ysize=256):
         self.motherboard = motherboard
         self.xsize = xsize
         self.ysize = ysize
@@ -17,6 +24,7 @@ class SpaceInvadersScreen:
         # For performance, so we do not have to dereference these pointers constantly
         self.vram = motherboard.memory
         self.vram_start = motherboard.memory.vram_start
+        self.vram_end = self.vram_start + (self.xsize * self.ysize // 8) - 1
         self.window.fill(0)
         self.num_renders = 0
         self.render_time_ps = 0
@@ -34,8 +42,22 @@ class SpaceInvadersScreen:
     def setpx(self, x, y, val):
         pass
 
+
     def draw(self):
-        pass
-
-
+        # see http://computerarcheology.com/Arcade/SpaceInvaders/Hardware.html or
+        # https://www.walkofmind.com/programming/side/hardware.htm for some descriptions of the screen geometry
+        x = 0
+        y = 255
+        mem_pos = self.vram_start
+        byte = self.vram[mem_pos]
+        while mem_pos <= self.vram_end:
+            self.window.set_at((x, y), color_from_pos_in_byte(byte, 7 - (y % 8)))
+            y -= 1
+            if y < 0:
+                y = 255
+                x += 1
+            if y % 8 == 0:
+                mem_pos += 1
+                byte = self.vram[mem_pos]
+        pygame.display.update()
 

@@ -9,6 +9,10 @@ class OpcodeNotImplementedException(Exception):
     pass
 
 
+class InvalidInterruptException(Exception):
+    pass
+
+
 # Cannot figure out how to make this a member variable of the CPU itself without creating a bunch of named functions
 # translation of "ccc:"
 #   0 = NZ (not zero); 1 = Z (zero); 2 = NC (no carry); 3 = C (carry)
@@ -287,7 +291,7 @@ class I8080cpu:
             # Flags are not affected
             # 1 cycle, 5 states
             self.registers[ddd] = self.registers[sss]
-            cycles = 1
+            states = 5
         elif ddd != 0x06 and sss == 0x06:
             # MOV r, M
             # Move from memory
@@ -295,7 +299,7 @@ class I8080cpu:
             # Flags are not affected
             # 2 cycles, 7 states
             self.registers[ddd] = self.memory[self.get_hl()]
-            cycles = 2
+            states = 7
         else:  # ddd == 0x06 and sss != 0x06:
             # MOV M, r
             # Move to memory
@@ -303,8 +307,8 @@ class I8080cpu:
             # Flags are not affected
             # 2 cycles, 7 states
             self.memory[self.get_hl()] = self.registers[sss]
-            cycles = 2
-        return 1, cycles
+            states = 7
+        return 1, states
 
     def _MVI(self, opcode):
         ddd = (opcode >> 3) & 0x7
@@ -315,7 +319,7 @@ class I8080cpu:
             # Flags are not affected
             # 2 cycles, 7 states
             self.registers[ddd] = self.memory[self.pc + 1]
-            cycles = 2
+            states = 7
         else:
             # MVI M, data
             # Move to memory immediate
@@ -324,8 +328,8 @@ class I8080cpu:
             # Flags are not affected
             # 3 cycles 10 states
             self.memory[self.get_hl()] = self.memory[self.pc + 1]
-            cycles = 3
-        return 2, cycles
+            states = 10
+        return 2, states
 
     def _LXI(self, opcode):
         # LXI rp, data 16
@@ -338,7 +342,7 @@ class I8080cpu:
         high_byte = self.memory[self.pc + 2]
         low_byte = self.memory[self.pc + 1]
         self.set_register_pair[rp](high_byte, low_byte)
-        return 3, 3
+        return 3, 10
 
     def _LDA(self, opcode):
         # LDA addr
@@ -414,7 +418,7 @@ class I8080cpu:
         self.e = self.l
         self.h = tmp_d
         self.l = tmp_e
-        return 1, 1
+        return 1, 4
 
     # ARITHMETIC GROUP #
 
@@ -583,7 +587,7 @@ class I8080cpu:
             # 1 cycle 5 states
             new_val = (self.registers[ddd] - 1) & 0xFF
             self.registers[ddd] = new_val
-            cycles = 1
+            states = 5
         else:
             # DCR M
             # Decrement Memory
@@ -592,13 +596,13 @@ class I8080cpu:
             # 3 cycles 10 states
             new_val = (self.memory[self.get_hl()] - 1) & 0xFF
             self.memory[self.get_hl()] = new_val
-            cycles = 3
+            states = 10
 
         self.set_zero_from_byte(new_val)
         self.set_sign_from_byte(new_val)
         self.set_parity_from_byte(new_val)
         self.auxiliary_carry_flag = False
-        return 1, cycles
+        return 1, states
 
     def _INX(self, opcode):
         # INX rp
@@ -607,7 +611,7 @@ class I8080cpu:
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
         self.set_register_pair_as_word[rp]((self.get_register_pair[rp]() + 1) & 0xFFFF)
-        return 1, 1
+        return 1, 5
 
     def _DCX(self, opcode):
         # DCX rp
@@ -616,7 +620,7 @@ class I8080cpu:
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
         self.set_register_pair_as_word[rp]((self.get_register_pair[rp]() - 1) & 0xFFFF)
-        return 1, 1
+        return 1, 5
 
     def _DAD(self, opcode):
         # DAD rp
@@ -635,7 +639,7 @@ class I8080cpu:
         else:
             self.carry_flag = False
         self.set_hl_as_word(new_val & 0xFFFF)
-        return 1, 3
+        return 1, 10
 
     def _DAA(self, opcode):
         # DAA
@@ -648,6 +652,7 @@ class I8080cpu:
         # flag is set, 6 is added to the most significant 4 bits of the accumulator.
         # NOTE: All flags are affected
         # 1 cycle 4 states
+        raise OpcodeNotImplementedException(opcode)
         return "DAA", 1, 1, 4
 
     # LOGICAL GROUP
@@ -778,7 +783,7 @@ class I8080cpu:
             # The CY flag is set to 1 if (A) < (r)
             # 1 cycle 4 states
             self.do_compare(self.registers[sss])
-            cycles = 1
+            states = 4
         else:
             # CMP M
             # Compare memory
@@ -788,8 +793,8 @@ class I8080cpu:
             # ((H)(L)).
             # 2 cycles 7 states
             self.do_compare(self.memory[self.get_hl])
-            cycles = 2
-        return 1, cycles
+            states = 7
+        return 1, states
 
     def _CPI(self, opcode):
         # CPI data
@@ -800,7 +805,7 @@ class I8080cpu:
         # NOTE: My inference is that A is unchanged, even though this isn't stated.
         # 2 cycles 7 states
         self.do_compare(self.memory[self.pc + 1])
-        return 2, 2
+        return 2, 7
 
     def _RLC(self, opcode):
         # RLC
@@ -893,7 +898,7 @@ class I8080cpu:
                 pc_increments = 0
             else:
                 pc_increments = 3  # skip past the 2 byte address
-        return pc_increments, 3
+        return pc_increments, 10
 
     def _CALL(self, opcode):
         global CPU_CONDITION_TEST
@@ -913,7 +918,7 @@ class I8080cpu:
             self.sp -= 2
             self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
             pc_increments = 0
-            cycles = 5
+            states = 17
         else:
             # CALL condition addr
             # If the specified condition is true, the actions specified in the CALL instruction (see above) are
@@ -927,11 +932,11 @@ class I8080cpu:
                 self.sp -= 2
                 self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
                 pc_increments = 0
-                cycles = 5
+                states = 17
             else:
                 pc_increments = 3
-                cycles = 3
-        return pc_increments, cycles
+                states = 11
+        return pc_increments, states
 
     def _RET(self, opcode):
         global CPU_CONDITION_TEST
@@ -947,7 +952,7 @@ class I8080cpu:
             self.pc = (self.memory[self.sp + 1] << 8) | self.memory[self.sp]
             self.sp += 2
             pc_increments = 0
-            cycles = 3
+            states = 10
         else:
             # RET condition
             # If the specified condition is true, the actions specified in the RET instruction (see above) are
@@ -959,11 +964,11 @@ class I8080cpu:
                 self.pc = (self.memory[self.sp + 1] << 8) | self.memory[self.sp]
                 self.sp += 2
                 pc_increments = 0
-                cycles = 3
+                states = 11
             else:
                 pc_increments = 1
-                cycles = 1
-        return pc_increments, cycles
+                states = 5
+        return pc_increments, states
 
     def _RST(self, opcode):
         # RST n
@@ -971,14 +976,27 @@ class I8080cpu:
         # The high-order eight bits of the next instruction address are moved to the memory location whose
         # address is one less than the content of register SP.  THe low-order eight bits of the next instruction
         # address are moved to the memory location whose address is two less than the content of register SP.
-        # THe content of register SP is decremented by two.  Control is transferred to teh instruction whose
+        # THe content of register SP is decremented by two.  Control is transferred to the instruction whose
         # address is 8 times the content of NNN.
-        # Note the shortcut here is to set PC = 00 + (opcode & 0x56)
+        # Note the shortcut here is to set PC = (opcode & 0x38)
         # 3 cycles 11 states
-        nnn = (opcode >> 3) & 0x7
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "RST {}".format(hexy(nnn, 3))
-        return ret_str, 1, 3, 11
+
+        # TODO This looks like a CALL, could refactor
+        self.memory[self.sp - 1] = ((self.pc + 3) >> 8)
+        self.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
+        self.sp -= 2
+
+        # This is RST-specific
+        self.pc = opcode & 0x38
+        return 0, 11
+
+    def do_interrupt(self, interrupt):
+        if not (0 <= interrupt <= 7):
+            raise InvalidInterruptException(interrupt)
+        # RST instruction has binary format 11nnn111 where nnn is the interrupt number from 0-7
+        opcode = 0xC7 | (interrupt << 3)
+        ignore_increments, num_cycles = self.opcode_lookup[opcode](opcode)
+        return num_cycles
 
     def _PCHL(self, opcode):
         # PCHL
@@ -1026,7 +1044,7 @@ class I8080cpu:
             self.memory[self.sp - 1] = self.a
             self.memory[self.sp - 2] = self.get_byte_from_flags()
         self.sp -= 2
-        return 1, 3
+        return 1, 11
 
     def _POP(self, opcode):
         rp = (opcode >> 4) & 0x3
@@ -1051,7 +1069,7 @@ class I8080cpu:
             self.set_flags_from_byte(self.memory[self.sp])
             self.a = self.memory[self.sp + 1]
         self.sp += 2
-        return 1, 3
+        return 1, 10
 
     def _XTHL(self, opcode):
         # XTHL
@@ -1068,7 +1086,7 @@ class I8080cpu:
         self.l = self.memory[self.sp]
         self.memory[self.sp] = tmp_l
         self.memory[self.sp + 1] = tmp_h
-        return 1, 5
+        return 1, 18
 
     def _SPHL(self, opcode):
         # SPHL
@@ -1077,7 +1095,7 @@ class I8080cpu:
         # Flags are not affected
         # 1 cycle 5 states
         self.sp = self.get_hl
-        return 1, 1
+        return 1, 5
 
     def _IN(self, opcode):
         # IN port
@@ -1102,7 +1120,7 @@ class I8080cpu:
         # Port 5 - Sounds
         # Port 6 - Watchdog
         self.motherboard.handle_output(self.memory[self.pc + 1], self.a)
-        return 2, 3
+        return 2, 10
 
     def _EI(self, opcode):
         # EI
@@ -1130,13 +1148,13 @@ class I8080cpu:
         # HLT is not used in Space Invaders.  I do not want to have to test whether or not the CPU is halted
         # on each cycle.  So raise the not implemented exception until we have reason to implement.
         raise OpcodeNotImplementedException(opcode)
-        # return 1, 1
+        # return 1, 7
 
     def _NOP(self, opcode):
         # NOP
         # No operation is performed.  The registers and flags are unaffected.
         # 1 cycle 4 states
-        return 1, 1
+        return 1, 4
 
     def InvalidOpCode(self, opcode):
         raise InvalidOpCodeException("Invalid opcode: {}".format(opcode))

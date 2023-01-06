@@ -43,6 +43,12 @@ class SpaceInvadersMotherBoard:
         self.sound_fleet_movement_4 = pygame.mixer.Sound("sounds/fastinvader4.wav")
         self.sound_ufo_hit = pygame.mixer.Sound("sounds/ufo_highpitch.wav")
 
+    def handle_input(self, port):
+        # see: https://www.walkofmind.com/programming/side/hardware.htm
+        # Keep in mind - a bit for an input is enabled until they are processed by the CPU and then the
+        # bit is disabled
+        pass
+
     def handle_output(self, port, data):
         # All the CPU does for output is send the right byte to the right I/O port.  The work is done by the
         # motherboard.
@@ -76,6 +82,8 @@ class SpaceInvadersMotherBoard:
             if data & 0x10:
                 self.sound_extended_play.play()
             if data & 0x20:
+                # I believe that we should just ignore this because I think that "AMP enable" is for sound, but
+                # will wait until/if this is encountered in the code before I figure it out.
                 raise OutputPortNotImplementedException("Bit 5 of Port 3")
         elif port == 0x5:
             # https://www.computerarcheology.com/Arcade/SpaceInvaders/Hardware.html#output
@@ -135,7 +143,7 @@ def main():
     run = True
 
     start_time = datetime.datetime.now()
-    num_cycles = 0
+    num_states = 0
     num_instructions = 0
     last_instruction_time = datetime.datetime.now()
 
@@ -143,8 +151,8 @@ def main():
     deb = debugger.Debugger8080(motherboard, dis)
 
     if debug_mode:
-        run, i, j = deb.debug(num_cycles, num_instructions)
-        num_cycles += i
+        run, i, j = deb.debug(num_states, num_instructions)
+        num_states += i
         num_instructions += j
 
     while run:
@@ -153,15 +161,54 @@ def main():
                 run = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    run, i, j = deb.debug(num_cycles, num_instructions)  # returns False if quit, true if not
-                    num_cycles += i
+                    run, i, j = deb.debug(num_states, num_instructions)  # returns False if quit, true if not
+                    num_states += i
                     num_instructions += j
+
+        # Each state marks a clock period.  2MHz = 2 million clock periods per second.  60Hz refresh means 33,333
+        # states before a redraw.  The two interrupts occur approx halfway through the period and then right before
+        # the redraw.
+        cur_states = 0
+        while cur_states <= 16667 and run:
+            try:
+                i = motherboard.cpu.cycle()
+            except:
+                deb.debug(num_states, num_instructions)
+                run = False
+            cur_states += i
+            num_states += i
+            num_instructions += 1
+
+        # first interrupt
         try:
-            num_cycles += motherboard.cpu.cycle()
+            # Call will be RST 1
+            i = motherboard.cpu.do_interrupt(1)
         except:
-            deb.debug(num_cycles, num_instructions)
+            deb.debug(num_states, num_instructions)
             run = False
-        num_instructions += 1
+        cur_states += i
+        num_states += i
+
+        while cur_states <= 33333 and run:
+            try:
+                i = motherboard.cpu.cycle()
+            except:
+                deb.debug(num_states, num_instructions)
+                run = False
+            cur_states += i
+            num_states += i
+            num_instructions += 1
+
+        try:
+            # Call will be RST 2
+            i = motherboard.cpu.do_interrupt(2)
+        except:
+            deb.debug(num_states, num_instructions)
+            run = False
+        cur_states += i
+        num_states += i
+
+        motherboard.video_card.draw()
 
     end_time = datetime.datetime.now()
     duration = (end_time - start_time).total_seconds()
@@ -170,7 +217,7 @@ def main():
     print("End: {}".format(end_time))
     print("Duration: {} sec.".format(duration))
     print("Num instructions: {}".format(num_instructions))
-    print("Performance: {} cycles per second".format(num_cycles / duration))
+    print("Performance: {} cycles per second".format(num_states / duration))
 
 
     pygame.quit()

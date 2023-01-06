@@ -19,12 +19,13 @@ class Debugger8080:
         print("     r           Run program until next breakpoint")
         print("     rr          Exit debugger and return to normal execution")
         print("     q           Terminate program and debugger")
-        print("     int N       Send interrupt N to the system [NOT IMPLEMENTED]")
+        print("     int N       Send interrupt N to the system")
         print("     x 0xM       display contents of memory address M")
         print("     x 0xM N     display contents of N bytes of memory starting with address M")
         print("     set 0xM 0xN set contents of memory address M with value N")
+        print("     draw        tell video card to render the current screen")
 
-    def debug(self, total_cycles=0, total_instructions=0):
+    def debug(self, total_states=0, total_instructions=0):
 
         breakpoint_list = []
         max_mem = self.motherboard.memory.max_mem()
@@ -33,7 +34,7 @@ class Debugger8080:
         while running:
             print(self.motherboard.cpu.debug_dump())
             print("\n")
-            print("Instructions: {}\tCycles:{}\n".format(total_instructions, total_cycles))
+            print("Instructions: {}\tStates:{}\n".format(total_instructions, total_states))
             print("Current +/- 10 bytes of instructions:")
             start = max(0, self.motherboard.cpu.pc - 10)
             end = min([self.motherboard.cpu.pc + 10, max_mem])
@@ -43,24 +44,34 @@ class Debugger8080:
             next_cmd = input("> ").lower()
             if len(next_cmd) == 0 or (next_cmd[0] == "s" and next_cmd[0:3] != "set"):
                 x = next_cmd.split()
-                num_cycles = 1
+                num_states = 1
                 if len(x) > 1:
                     try:
                         if x[1][0:2] == '0x':
-                            num_cycles = int(x[1], 16)
+                            num_states = int(x[1], 16)
                         else:
-                            num_cycles = int(x[1])
+                            num_states = int(x[1])
                     except:
                         print('invalid input {}'.format(x[1]))
-                for i in range(num_cycles):
+                for i in range(num_states):
                     try:
-                        total_cycles += self.motherboard.cpu.cycle()
+                        total_states += self.motherboard.cpu.cycle()
                     except:
                         traceback.print_exc()
                     else:
                         total_instructions += 1
                     if self.motherboard.cpu.pc in breakpoint_list:
                         break
+            elif next_cmd[0:3] == "int":
+                x = next_cmd.split()
+                try:
+                    which_int = int(x[1])
+                    assert 0 <= which_int <= 7
+                    total_states += self.motherboard.cpu.do_interrupt(which_int)
+                except:
+                    traceback.print_exc()
+                else:
+                    total_instructions += 1
             elif next_cmd == "r":
                 t = True
                 while t:
@@ -68,9 +79,10 @@ class Debugger8080:
                         t = False
                     else:
                         try:
-                            total_cycles += self.motherboard.cpu.cycle()
+                            total_states += self.motherboard.cpu.cycle()
                         except:
                             traceback.print_exc()
+                            t = False
                         else:
                             total_instructions += 1
             elif next_cmd == "rr":
@@ -116,7 +128,7 @@ class Debugger8080:
                     for bp in breakpoint_list:
                         print('0x{}'.format(hex(bp)[2:].zfill(4).upper()))
                     print('\n')
-            elif next_cmd[0] == "d":
+            elif next_cmd == "d":
                 x = next_cmd.split()
                 if len(x) == 1:
                     print('Invalid input - need breakpoint to delete')
@@ -129,6 +141,8 @@ class Debugger8080:
                             breakpoint_list.remove(bp)
                     except:
                         print("invalid input: {}".format(x[1]))
+            elif next_cmd == "draw":
+                self.motherboard.video_card.draw()
             elif next_cmd[0] == "x":
                 x = next_cmd.split()
                 if len(x) == 1:
@@ -156,4 +170,4 @@ class Debugger8080:
             else:
                 print("Invalid command.")
 
-        return continue_on_return, total_cycles, total_instructions
+        return continue_on_return, total_states, total_instructions
