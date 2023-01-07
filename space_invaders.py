@@ -234,6 +234,8 @@ def main():
         num_states += i
         num_instructions += j
 
+    loops = 0
+
     while run:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -274,14 +276,15 @@ def main():
                 run = False
 
         # first interrupt
-        try:
-            # Call will be RST 1
-            i = motherboard.cpu.do_interrupt(1)
-            cur_states += i
-            num_states += i
-        except:
-            deb.debug(num_states, num_instructions)
-            run = False
+        if run:
+            try:
+                # Call will be RST 1
+                i = motherboard.cpu.do_interrupt(1)
+                cur_states += i
+                num_states += i
+            except:
+                deb.debug(num_states, num_instructions)
+                run = False
 
 
         while cur_states <= 33333 and run:
@@ -294,17 +297,21 @@ def main():
             num_states += i
             num_instructions += 1
 
-        try:
-            # Call will be RST 2
-            i = motherboard.cpu.do_interrupt(2)
-            cur_states += i
-            num_states += i
-        except:
-            deb.debug(num_states, num_instructions)
-            run = False
+        if run:
+            try:
+                # Call will be RST 2
+                i = motherboard.cpu.do_interrupt(2)
+                cur_states += i
+                num_states += i
+            except:
+                deb.debug(num_states, num_instructions)
+                run = False
 
-
-        motherboard.video_card.draw()
+        loops += 1
+        if loops % 2 == 0:
+            # pygame drawing is so slow... so if I draw it at 30Hz instead of 60Hz I get close to 2MHz on the CPU
+            # performance.
+            motherboard.video_card.draw()
 
     end_time = datetime.datetime.now()
     duration = (end_time - start_time).total_seconds()

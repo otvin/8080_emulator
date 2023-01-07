@@ -370,20 +370,24 @@ class I8080cpu:
         # The content of the memory location, whose address is specified in byte 2 and byte 3 of the
         # instruction,is moved to register L.  The content of the memory location at the succeeding address is
         # moved to register H.
+        # Flags are not affected
         # 5 cycles 16 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "LD HL, (${}{})".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 3, 5, 16
+        addr = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+        self.l = self.memory[addr]
+        self.h = self.memory[addr + 1]
+        return 3, 16
 
     def _SHLD(self, opcode):
         # SHLD addr
         # Store H and L direct
         # The content of register L is moved to the memory location whose address is specified in byte 2 and
         # byte 3.  The content of register H is moved to the succeeding memory location.
+        # Flags are not affected
         # 5 cycles 16 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "LD (${}{}), HL".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 3, 5, 16
+        addr = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+        self.memory[addr] = self.l
+        self.memory[addr + 1] = self.h
+        return 3, 16
 
     def _LDAX(self, opcode):
         # LDAX rp
@@ -855,8 +859,12 @@ class I8080cpu:
         # both set to the value shifted out of the high order bit position.  Only the CY flag is affected.
         # NOTE: They mean that "of the flags, only CY flag is affected."
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "RLC", 1, 1, 4
+        self.carry_flag = bool(self.a & 0x80)
+        self.a = self.a << 1
+        if self.carry_flag:
+            self.a |= 0x01
+        self.a &= 0xFF
+        return 1, 4
 
     def _RRC(self, opcode):
         # RRC
@@ -867,6 +875,9 @@ class I8080cpu:
         # 1 cycle 4 states
         self.carry_flag = bool(self.a & 0x1)
         self.a = self.a >> 1
+        if self.carry_flag:
+            self.a |= 0x80
+        self.a &= 0xFF
         return 1, 4
 
     def _RAL(self, opcode):
