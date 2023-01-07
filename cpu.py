@@ -349,21 +349,20 @@ class I8080cpu:
         # Load accumulator direct
         # The content of the memory location, whose address is specified in byte 2 and byte 3 of the
         # instruction, is moved to register A.
+        # Flags are not affected
         # 4 cycles 13 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "LD A, (${}{})".format(hexy(self.memory[cur_addr + 2], 2), hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 3, 4, 13
+        self.a = self.memory[(self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]]
+        return 3, 13
 
     def _STA(self, opcode):
         # STA addr
         # Store accumulator direct
         # The content of the accumulator is moved to the memory location whose address is specified in byte 2
         # and byte 3 of the instruction
+        # Flags are not affected
         # 4 cycles 13 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "LD (${}{}), A".format(hexy(self.memory[cur_addr + 2], 2),
-                                         hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 3, 4, 13
+        self.memory[(self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]] = self.a
+        return 3, 13
 
     def _LHLD(self, opcode):
         # LHLD addr
@@ -421,18 +420,29 @@ class I8080cpu:
         return 1, 4
 
     # ARITHMETIC GROUP #
+    def do_add(self, byte, add_one_for_carry):
+        self.a += byte
+        if add_one_for_carry:
+            self.a += 0x1
+        self.carry_flag = bool(self.a > 0xFF)
+        self.a &= 0xFF
+
+        # This is wrong, but the flag is only used in DAA so it shouldn't matter that it's wrong
+        self.auxiliary_carry_flag = bool(self.a & 0x10)
+
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
 
     def _ADD(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # ADD r
             # Add register
             # The content of register r is added to the content of the accumulator.  The result is placed in the
             # accumulator.
             # 1 cycle 4 states
-            ret_str = "ADD A, {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            self.do_add(self.registers[sss], False)
             states = 4
         else:
             # ADD M
@@ -440,32 +450,31 @@ class I8080cpu:
             # The content of the memory location whose address is contained in the H and L registers is added
             # to the content of the accumulator.  The result is placed in the accumulator.
             # 2 cycles 7 states
-            ret_str = "ADD A, (HL)"
-            cycles = 2
+            self.do_add(self.memory[self.get_hl()], False)
             states = 7
-        return ret_str, 1, cycles, states
+        return 1, states
 
     def _ADI(self, opcode):
         # ADI data
         # Add Immediate
         # The contents of the second byte of the instruction is added to the content of the accumulator.  The
         # result is placed in the accumulator.
+        # All flags are affected
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "ADD A, ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.do_add(self.memory[self.pc + 1], False)
+        return 2, 7
+
 
     def _ADC(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # ADC r
             # Add register with carry
             # The content of register r and the content of the carry bit are added to the content of the
             # accumulator.  The result is placed in the accumulator.
+            # All flags are affected
             # 1 cycle 4 states
-            ret_str = "ADC A, {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            self.do_add(self.registers[sss], self.carry_flag)
             states = 4
         else:
             # ADC M
@@ -473,66 +482,64 @@ class I8080cpu:
             # The content of the memory location whose address is contained in the H and L registers is added
             # and the content of the CY flag are added to the content of the accumulator.  The result is placed
             # in the accumulator.
+            # All flags are affected
             # 2 cycles 7 states
-            ret_str = "ADC A, (HL)"
-            cycles = 2
+            self.do_add(self.memory[self.get_hl()], self.carry_flag)
             states = 7
-        return ret_str, 1, cycles, states
+        return 1, states
 
     def _ACI(self, opcode):
         # ACI data
         # Add immediate with carry
         # The content of the second byte of the instruction and the content of the CY flag are added to the
-        # contents of the accumulator.  THe result is placed in the accumulator.
+        # contents of the accumulator.  The result is placed in the accumulator.
+        # All flags are affected
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "ACI A, ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.do_add(self.memory[self.pc + 1], self.carry_flag)
+        return 2, 7
 
     def _SUB(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # SUB r
             # Subtract register
             # The content of register r is subtracted from the content of the accumulator.  The result is placed in
             # the accumulator.
+            # All flags are affected
             # 1 cycle 4 states
-            ret_str = "SUB A, {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            self.do_subtraction(self.registers[sss], False, True)
             states = 4
         else:
             # SUB M
             # Subtract memory
             # The content of the memory location whose address is contained in the H and L registers is subtracted
             # from the content of the accumulator.  The result is placed in the accumulator.
+            # All flags are affected
             # 2 cycles 7 states
-            ret_str = "SUB A, (HL)"
-            cycles = 2
+            self.do_subtraction(self.memory[self.get_hl()], False, True)
             states = 7
-        return ret_str, 1, cycles, states
+        return 1, states
 
     def _SUI(self, opcode):
         # SUI data
         # Subtract Immediate
         # The content of the second byte of the instruction is subtracted from the content of the accumulator.
         # The result is placed in the accumulator.
+        # All flags are affected
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "SUB A, ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.do_subtraction(self.memory[self.pc + 1], False, True)
+        return 2, 7
 
     def _SBB(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
+
         if sss != 0x6:
             # SBB r
             # Subtract register with borrow
             # The content of register r and the content of the CY flag are both subtracted from the
             # accumulator.  The result is placed in the accumulator.
             # 1 cycle 4 states
-            ret_str = "SBB A, {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            self.do_subtraction(self.registers[sss], self.carry_flag, True)
             states = 4
         else:
             # SBB M
@@ -541,10 +548,9 @@ class I8080cpu:
             # and the content of the CY flag are both subtracted from the accumulator.  The result is placed
             # in the accumulator.
             # 2 cycles 7 states
-            ret_str = "SBB A, (HL)"
-            cycles = 2
+            self.do_subtraction(self.memory[self.get_hl()], self.carry_flag, True)
             states = 7
-        return ret_str, 1, cycles, states
+        return 1, states
 
     def _SBI(self, opcode):
         # SBI data
@@ -552,9 +558,8 @@ class I8080cpu:
         # The content of the second byte of the instruction and the contents of the CY flag are both subtracted
         # from the accumulator.  The result is placed in the accumulator.
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "SBI A, ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.do_subtraction(self.memory[self.pc + 1], self.carry_flag, True)
+        return 2, 7
 
     def _INR(self, opcode):
         ddd = (opcode >> 3) & 0x7
@@ -684,7 +689,7 @@ class I8080cpu:
             states = 7
 
         # per https://retrocomputing.stackexchange.com/questions/14977/auxiliary-carry-and-the-intel-8080s-logical-instructions
-        # The Auxiliary Carry flag is set to the or of byte 3 (0x08) of the 2 values involved in the AND operation.
+        # The Auxiliary Carry flag is set to the or of bit 3 (0x08) of the 2 values involved in the AND operation.
         self.auxiliary_carry_flag = bool((self.a | second_byte) & 0x08)
         self.a &= second_byte
         self.carry_flag = False
@@ -789,8 +794,14 @@ class I8080cpu:
         self.set_parity_from_byte(self.a)
         return 2, 7
 
-    def do_compare(self, val):
-        # executes CMP / CPI comparing the val to the accumulator
+    def do_subtraction(self, val, subtract_one_for_borrow, store_value):
+        # Executes a subtraction.  If store_value is False, then it does a CMP and does not actually save the value
+        # in the accumulator.
+        # https://retrocomputing.stackexchange.com/questions/5953/carry-flag-in-8080-8085-subtraction/5956#5956
+        # Note that in CMP and Subtraction, the carry flag is set based on the unsigned values.
+        if subtract_one_for_borrow:
+            val += 1
+            val &= 0xFF # keeps it unsigned
         tmp = (self.a - val) & 0xFF
         self.set_parity_from_byte(tmp)
         self.set_zero_from_byte(tmp)
@@ -800,10 +811,10 @@ class I8080cpu:
         else:
             self.carry_flag = False
         self.auxiliary_carry_flag = False
+        if store_value:
+            self.a = tmp
 
     def _CMP(self, opcode):
-        # https://retrocomputing.stackexchange.com/questions/5953/carry-flag-in-8080-8085-subtraction/5956#5956
-        # Note that in CMP and Subtraction, the carry flag is set based on the unsigned values.
         sss = opcode & 0x7
         if sss != 0x6:
             # CMP r
@@ -812,7 +823,7 @@ class I8080cpu:
             # The condition flags are set as a result of the subtraction.  The Z flag is set to 1 if (A) = (r).
             # The CY flag is set to 1 if (A) < (r)
             # 1 cycle 4 states
-            self.do_compare(self.registers[sss])
+            self.do_subtraction(self.registers[sss], False, False)
             states = 4
         else:
             # CMP M
@@ -822,7 +833,7 @@ class I8080cpu:
             # of the subtraction.  The Z flag is set to 1 if (A) = ((H)(L)).  The CY flag is set to 1 if (A) <
             # ((H)(L)).
             # 2 cycles 7 states
-            self.do_compare(self.memory[self.get_hl()])
+            self.do_subtraction(self.memory[self.get_hl()], False, False)
             states = 7
         return 1, states
 
@@ -834,7 +845,7 @@ class I8080cpu:
         # flag is set to 1 if (A) < (byte 2).
         # NOTE: My inference is that A is unchanged, even though this isn't stated.
         # 2 cycles 7 states
-        self.do_compare(self.memory[self.pc + 1])
+        self.do_subtraction(self.memory[self.pc + 1], False, False)
         return 2, 7
 
     def _RLC(self, opcode):
@@ -886,22 +897,22 @@ class I8080cpu:
         # The contents of the accumulator are complemented (zero bits become 1, one bits become 0).  No flags
         # are affected.
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "CMA", 1, 1, 4
+        self.a = (~self.a) & 0xFF  # the and is likely not needed, but this preserves the unsigned nature of a.
+        return 1, 4
 
     def _CMC(self, opcode):
         # CMC
         # The CY flag is complemented.  No other flags are affected.
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "CMC", 1, 1, 4
+        self.carry_flag = not self.carry_flag
+        return 1, 4
 
     def _STC(self, opcode):
         # STC
         # The CY flag is set to 1.  No other flags are affected.
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "STC", 1, 1, 4
+        self.carry_flag = True
+        return 1, 4
 
     # BRANCH GROUP
 
@@ -1013,8 +1024,8 @@ class I8080cpu:
         # 3 cycles 11 states
 
         # TODO This looks like a CALL, could refactor
-        self.memory[self.sp - 1] = ((self.pc + 3) >> 8)
-        self.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
+        self.memory[self.sp - 1] = (self.pc >> 8)
+        self.memory[self.sp - 2] = (self.pc & 0xff)
         self.sp -= 2
 
         # This is RST-specific
@@ -1034,11 +1045,12 @@ class I8080cpu:
     def _PCHL(self, opcode):
         # PCHL
         # Jump H and L indirect - move H and L to PC
-        # The content of register H is moved to teh high-order eight bits of register PC.  The content of
+        # The content of register H is moved to the high-order eight bits of register PC.  The content of
         # register L is moved to the low-order eight bits of register PC
+        # Flags are not affected
         # 1 cycle 5 states
-        raise OpcodeNotImplementedException(opcode)
-        return "PCHL", 1, 1, 5
+        self.pc = self.get_hl()
+        return 0, 5
 
     # STACK, I/O, and MACHINE CONTROL GROUP
 
@@ -1134,10 +1146,10 @@ class I8080cpu:
         # IN port
         # Input
         # The data placed on thh eight bit bi-directional data bus by the specified port is moved to register A.
+        # Flags are not affected
         # 3 cycles 10 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "IN A, (INP {})".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 3, 10
+        self.a = self.motherboard.handle_input(self.memory[self.pc + 1])
+        return 2, 10
 
     def _OUT(self, opcode):
         # OUT port
@@ -1231,7 +1243,6 @@ class I8080cpu:
         return ret_str
 
     def cycle(self):
-
         opcode = self.memory[self.pc]
         # for performance reasons, we pass the opcode to the function that handles it, so we do not have to go
         # to memory twice to get it.

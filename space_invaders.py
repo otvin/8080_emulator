@@ -26,6 +26,27 @@ class SpaceInvadersMotherBoard:
         self.cpu = cpu.I8080cpu(self)  # The CPU needs to access the motherboard to get to graphics, sound, and memory.
         self.stack_pointer_start = 0x2400  # needed for debugger to display the stack.  The SP itself gets set in code.
 
+        self.credit_pressed = False
+        self.one_player_start_pressed = False
+        self.two_player_start_pressed = False
+
+        self.player_one_left_pressed = False
+        self.player_one_fire_pressed = False
+        self.player_one_right_pressed = False
+
+        self.player_two_left_pressed = False
+        self.player_two_fire_pressed = False
+        self.player_two_right_pressed = False
+
+        # DIPs 3 and 5 are read as two bits - 00 is 3 ships, 01 is 4, 10 is 5, 11 is 6.
+        self.dip3 = True
+        self.dip5 = False
+        # DIP 6 controls whether extra ship is at 1500 (if 0) or 1000 (if 1)
+        self.dip6 = True
+        # DIP 7 controls whether coin info is displayed in the demo screen, 0 = On
+        self.dip7 = False
+
+
         # Sounds
         # Sounds sourced from: http://www.classicgaming.cc/classics/space-invaders/sounds except for extended play,
         # which was originally called 9.wav in the Space Invaders file at https://samples.mameworld.info/ (look at
@@ -47,7 +68,65 @@ class SpaceInvadersMotherBoard:
         # see: https://www.walkofmind.com/programming/side/hardware.htm
         # Keep in mind - a bit for an input is enabled until they are processed by the CPU and then the
         # bit is disabled
-        pass
+        # Only 3 input ports are used
+        # 1 - Coin slot, start game and player 1 controls
+        # 2 - Game configuration and player 2 controls
+        # 3 - Shift register
+        if port == 0x1:
+            ret_val = 0x08  # bit 3 is always pressed per computerarchaeology.com
+            if self.credit_pressed:
+                ret_val |= 0x01
+            if self.two_player_start_pressed:
+                ret_val |= 0x02
+            if self.one_player_start_pressed:
+                ret_val |= 0x04
+            if self.player_one_fire_pressed:
+                ret_val |= 0x10
+            if self.player_one_left_pressed:
+                ret_val |= 0x20
+            if self.player_one_right_pressed:
+                ret_val |= 0x40
+
+            # bit 7 is ignored
+
+            # reset pressed buttons
+            self.credit_pressed = False
+            self.two_player_start_pressed = False
+            self.one_player_start_pressed = False
+            self.player_one_fire_pressed = False
+            self.player_one_left_pressed = False
+            self.player_one_right_pressed = False
+
+            return ret_val
+
+        elif port == 0x2:
+            ret_val = 0x0
+            if self.dip3:
+                ret_val |= 0x01
+            if self.dip5:
+                ret_val |= 0x02
+            if self.dip6:
+                ret_val |= 0x08
+            if self.player_two_fire_pressed:
+                ret_val |= 0x10
+            if self.player_two_left_pressed:
+                ret_val |= 0x20
+            if self.player_two_right_pressed:
+                ret_val |= 0x40
+            if self.dip7:
+                ret_val |= 0x80
+
+            # reset pressed buttons
+            self.player_two_fire_pressed = False
+            self.player_two_left_pressed = False
+            self.player_two_right_pressed = False
+
+            return ret_val
+
+        elif port == 0x3:
+            raise InputPortNotImplementedException(port)
+        else:
+            raise InputPortNotImplementedException(port)
 
     def handle_output(self, port, data):
         # All the CPU does for output is send the right byte to the right I/O port.  The work is done by the
@@ -164,6 +243,21 @@ def main():
                     run, i, j = deb.debug(num_states, num_instructions)  # returns False if quit, true if not
                     num_states += i
                     num_instructions += j
+                elif event.key == pygame.K_0:
+                    motherboard.credit_pressed = True
+                elif event.key == pygame.K_1:
+                    motherboard.one_player_start_pressed = True
+                elif event.key == pygame.K_2:
+                    motherboard.two_player_start_pressed = True
+                elif event.key == pygame.K_LEFT:
+                    motherboard.player_one_left_pressed = True
+                    motherboard.player_two_left_pressed = True
+                elif event.key == pygame.K_RIGHT:
+                    motherboard.player_one_right_pressed = True
+                    motherboard.player_two_right_pressed = True
+                elif event.key == pygame.K_SPACE:
+                    motherboard.player_one_fire_pressed = True
+                    motherboard.player_two_fire_pressed = True
 
         # Each state marks a clock period.  2MHz = 2 million clock periods per second.  60Hz refresh means 33,333
         # states before a redraw.  The two interrupts occur approx halfway through the period and then right before
@@ -172,12 +266,12 @@ def main():
         while cur_states <= 16667 and run:
             try:
                 i = motherboard.cpu.cycle()
+                cur_states += i
+                num_states += i
+                num_instructions += 1
             except:
                 deb.debug(num_states, num_instructions)
                 run = False
-            cur_states += i
-            num_states += i
-            num_instructions += 1
 
         # first interrupt
         try:
