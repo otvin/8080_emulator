@@ -183,11 +183,12 @@ def main():
         try:
             # Call will be RST 1
             i = motherboard.cpu.do_interrupt(1)
+            cur_states += i
+            num_states += i
         except:
             deb.debug(num_states, num_instructions)
             run = False
-        cur_states += i
-        num_states += i
+
 
         while cur_states <= 33333 and run:
             try:
@@ -202,11 +203,12 @@ def main():
         try:
             # Call will be RST 2
             i = motherboard.cpu.do_interrupt(2)
+            cur_states += i
+            num_states += i
         except:
             deb.debug(num_states, num_instructions)
             run = False
-        cur_states += i
-        num_states += i
+
 
         motherboard.video_card.draw()
 
