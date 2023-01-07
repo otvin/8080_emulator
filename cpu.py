@@ -46,6 +46,7 @@ class I8080cpu:
         # Tracking whether interrupts are enabled.  Interrupts can be disabled via the DI opcode, but the
         # interrupt bit is also cleared whenever an interrupt is triggered.  So interrupt handlers have to
         # re-enable interrupts via the EI opcode.
+        self.enable_interrupts_after_next_instruction = False
         self.interrupts_enabled = True
 
         # If the CPU is halted, it will only handle interrupts
@@ -68,7 +69,6 @@ class I8080cpu:
         # that parity flag is not used in the Space Invaders game, so emulators for that game are not impacted by
         # the incorrectness of their calculations of the flag.
         self.parity_flag = False
-        # Used in DAA only
         self.auxiliary_carry_flag = False
 
         # Using a list of functions to speed the lookup, vs. doing a big nested
@@ -601,7 +601,13 @@ class I8080cpu:
         self.set_zero_from_byte(new_val)
         self.set_sign_from_byte(new_val)
         self.set_parity_from_byte(new_val)
-        self.auxiliary_carry_flag = False
+        # Not needed for Space Invaders, but needed to be complete.  Based on what I see
+        # in other emulators (e.g. MAME), the AC flag is set if a borrow was NOT needed.
+        # So basically, if the low 4 bits are 0xF then, prior to the decrement, they were
+        # all 0 and so a borrow was needed.  In that case, the AC flag is False.  Every
+        # other time it's true.  Won't be able to test this until I move past Space Invaders
+        # though.
+        self.auxiliary_carry_flag = bool((new_val & 0xF) != 0xF)
         return 1, states
 
     def _INX(self, opcode):
@@ -659,15 +665,13 @@ class I8080cpu:
 
     def _ANA(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # ANA r
             # AND register
             # The content of register r is logically anded with teh content of the accumulator.  The result is
             # placed in the accumulator.  The CY flag is cleared.
             # 1 cycle 4 states
-            ret_str = "AND {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            second_byte = self.registers[sss]
             states = 4
         else:
             # ANA M
@@ -676,10 +680,18 @@ class I8080cpu:
             # anded with the content of the accumulator.  The result is placed in the accumulator.  The CY flag is
             # cleared.
             # 2 cycles 7 states
-            ret_str = "AND (HL)"
-            cycles = 2
+            second_byte = self.memory[self.get_hl()]
             states = 7
-        return ret_str, 1, cycles, states
+
+        # per https://retrocomputing.stackexchange.com/questions/14977/auxiliary-carry-and-the-intel-8080s-logical-instructions
+        # The Auxiliary Carry flag is set to the or of byte 3 (0x08) of the 2 values involved in the AND operation.
+        self.auxiliary_carry_flag = bool((self.a | second_byte) & 0x08)
+        self.a &= second_byte
+        self.carry_flag = False
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
+        return 1, states
 
     def _ANI(self, opcode):
         # ANI data
@@ -687,21 +699,25 @@ class I8080cpu:
         # The content of the second byte of the instruction is logically anded with the contents of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "AND ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+
+        self.a &= self.memory[self.pc + 1]
+        self.carry_flag = False
+        self.auxiliary_carry_flag = False
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
+        return 2, 7
+
 
     def _XRA(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # XRA r
             # Exclusive OR register
             # The content of register r is logically exclusive-or'd with the content of the accumulator.  The result
             # is placed in the accumulator.  The CY and AC flags are cleared.
             # 1 cycle 4 states
-            ret_str = "XOR {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            self.a ^= self.registers[sss]
             states = 4
         else:
             # XRA M
@@ -710,10 +726,14 @@ class I8080cpu:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            ret_str = "XOR (HL)"
-            cycles = 2
+            self.a ^= self.memory[self.get_hl()]
             states = 7
-        return ret_str, 1, cycles, states
+        self.auxiliary_carry_flag = False
+        self.carry_flag = False
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
+        return 1, states
 
     def _XRI(self, opcode):
         # XRI data
@@ -721,21 +741,23 @@ class I8080cpu:
         # The content of the second byte of the instruction is exclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "XOR ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.a ^= self.memory[self.pc + 1]
+        self.carry_flag = False
+        self.auxiliary_carry_flag = False
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
+        return 2, 7
 
     def _ORA(self, opcode):
         sss = opcode & 0x7
-        raise OpcodeNotImplementedException(opcode)
         if sss != 0x6:
             # ORA r
             # OR register
             # The content of register r is logically inclusive-or'd with the content of the accumulator.  The result
             # is placed in the accumulator.  The CY and AC flags are cleared.
             # 1 cycle 4 states
-            ret_str = "OR {}".format(ddd_sss_translation[sss])
-            cycles = 1
+            self.a |= self.registers[sss]
             states = 4
         else:
             # ORA M
@@ -744,10 +766,14 @@ class I8080cpu:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            ret_str = "OR (HL)"
-            cycles = 2
+            self.a |= self.memory[self.get_hl()]
             states = 7
-        return ret_str, 1, cycles, states
+        self.auxiliary_carry_flag = False
+        self.carry_flag = False
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
+        return 1, states
 
     def _ORI(self, opcode):
         # ORI data
@@ -755,9 +781,13 @@ class I8080cpu:
         # The content of the second byte of the instruction is inclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        raise OpcodeNotImplementedException(opcode)
-        ret_str = "OR ${}".format(hexy(self.memory[cur_addr + 1], 2))
-        return ret_str, 2, 2, 7
+        self.a |= self.memory[self.pc + 1]
+        self.carry_flag = False
+        self.auxiliary_carry_flag = False
+        self.set_zero_from_byte(self.a)
+        self.set_sign_from_byte(self.a)
+        self.set_parity_from_byte(self.a)
+        return 2, 7
 
     def do_compare(self, val):
         # executes CMP / CPI comparing the val to the accumulator
@@ -792,7 +822,7 @@ class I8080cpu:
             # of the subtraction.  The Z flag is set to 1 if (A) = ((H)(L)).  The CY flag is set to 1 if (A) <
             # ((H)(L)).
             # 2 cycles 7 states
-            self.do_compare(self.memory[self.get_hl])
+            self.do_compare(self.memory[self.get_hl()])
             states = 7
         return 1, states
 
@@ -824,8 +854,9 @@ class I8080cpu:
         # both set to the value shifted out of the low order bit position.  Only the CY flag is affected.
         # NOTE: They mean that "of the flags, only CY flag is affected."
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "RRCA", 1, 1, 4
+        self.carry_flag = bool(self.a & 0x1)
+        self.a = self.a >> 1
+        return 1, 4
 
     def _RAL(self, opcode):
         # RAL
@@ -988,15 +1019,17 @@ class I8080cpu:
 
         # This is RST-specific
         self.pc = opcode & 0x38
+        self.interrupts_enabled = False
         return 0, 11
 
     def do_interrupt(self, interrupt):
         if not (0 <= interrupt <= 7):
             raise InvalidInterruptException(interrupt)
-        # RST instruction has binary format 11nnn111 where nnn is the interrupt number from 0-7
-        opcode = 0xC7 | (interrupt << 3)
-        ignore_increments, num_cycles = self.opcode_lookup[opcode](opcode)
-        return num_cycles
+        if self.interrupts_enabled:
+            # RST instruction has binary format 11nnn111 where nnn is the interrupt number from 0-7
+            opcode = 0xC7 | (interrupt << 3)
+            ignore_increments, num_cycles = self.opcode_lookup[opcode](opcode)
+            return num_cycles
 
     def _PCHL(self, opcode):
         # PCHL
@@ -1128,16 +1161,17 @@ class I8080cpu:
         # The interrupt system is enabled following the execution of the next instruction.
         # (Presumably, the instruction following EI)
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "EI", 1, 1, 4
+
+        self.enable_interrupts_after_next_instruction = True
+        return 1, 4
 
     def _DI(self, opcode):
         # DI
         # Disable Interrupts
-        # The interrupt system is enabled immediately following the execution of the DI instruction.
+        # The interrupt system is disabled immediately following the execution of the DI instruction.
         # 1 cycle 4 states
-        raise OpcodeNotImplementedException(opcode)
-        return "DI", 1, 1, 4
+        self.interrupts_enabled = False
+        return 1, 4
 
     def _HLT(self, opcode):
         # HLT
@@ -1201,6 +1235,10 @@ class I8080cpu:
         opcode = self.memory[self.pc]
         # for performance reasons, we pass the opcode to the function that handles it, so we do not have to go
         # to memory twice to get it.
+        flip_interrupts_on = self.enable_interrupts_after_next_instruction
         pc_increments, num_cycles = self.opcode_lookup[opcode](opcode)
         self.pc += pc_increments
+        if flip_interrupts_on:
+            self.interrupts_enabled = True
+            self.enable_interrupts_after_next_instruction  = False
         return num_cycles
