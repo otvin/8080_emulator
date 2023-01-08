@@ -67,6 +67,12 @@ class SpaceInvadersMotherBoard:
         self.sound_fleet_movement_3 = pygame.mixer.Sound("sounds/fastinvader3.wav")
         self.sound_fleet_movement_4 = pygame.mixer.Sound("sounds/fastinvader4.wav")
         self.sound_ufo_hit = pygame.mixer.Sound("sounds/ufo_highpitch.wav")
+        # Initialize to the time the game starts, so first time we try to play these sounds, it will have passed
+        self.last_sound_shot_played = datetime.datetime.now()
+        self.sound_shot_second_delay = 0.75
+        self.last_sound_player_die_played = datetime.datetime.now()
+        self.sound_player_die_second_delay = 3
+
 
     def handle_input(self, port):
         # see: https://www.walkofmind.com/programming/side/hardware.htm
@@ -90,16 +96,7 @@ class SpaceInvadersMotherBoard:
                 ret_val |= 0x20
             if self.player_one_right_pressed:
                 ret_val |= 0x40
-
             # bit 7 is ignored
-
-            # reset pressed buttons
-            self.credit_pressed = False
-            self.two_player_start_pressed = False
-            self.one_player_start_pressed = False
-            self.player_one_fire_pressed = False
-            self.player_one_left_pressed = False
-            self.player_one_right_pressed = False
 
             return ret_val
 
@@ -119,11 +116,6 @@ class SpaceInvadersMotherBoard:
                 ret_val |= 0x40
             if self.dip7:
                 ret_val |= 0x80
-
-            # reset pressed buttons
-            self.player_two_fire_pressed = False
-            self.player_two_left_pressed = False
-            self.player_two_right_pressed = False
 
             return ret_val
 
@@ -162,9 +154,19 @@ class SpaceInvadersMotherBoard:
             if data & 0x1:
                 self.sound_ufo.play()
             if data & 0x2:
-                self.sound_shot.play()
+                # This output is sent several times for each shot, but we only want to play the sound once
+                curtime = datetime.datetime.now()
+                tickdiff = (curtime - self.last_sound_shot_played).total_seconds()
+                if tickdiff >= self.sound_shot_second_delay:
+                    self.last_sound_shot_played = curtime
+                    self.sound_shot.play()
             if data & 0x4:
-                self.sound_flash_player_die.play()
+                # This output is sent several times for each player death, but we only want to play the sound once
+                curtime = datetime.datetime.now()
+                tickdiff = (curtime - self.last_sound_player_die_played).total_seconds()
+                if tickdiff >= self.sound_player_die_second_delay:
+                    self.last_sound_player_die_played = curtime
+                    self.sound_flash_player_die.play()
             if data & 0x8:
                 self.sound_invader_die.play()
             if data & 0x10:
@@ -172,11 +174,10 @@ class SpaceInvadersMotherBoard:
             if data & 0x20:
                 # I believe that we should just ignore this because I think that "AMP enable" is for sound, but
                 # will wait until/if this is encountered in the code before I figure it out.
-                raise OutputPortNotImplementedException("Bit 5 of Port 3")
+                pass
         elif port == 0x4:
             self.shift_register = self.shift_register >> 8
             self.shift_register |= (data << 8)
-            print("After adding {}, shift register = {}".format(hex(data), hex(self.shift_register).zfill(4)))
         elif port == 0x5:
             # https://www.computerarcheology.com/Arcade/SpaceInvaders/Hardware.html#output
             # bits 0-4 are sounds
@@ -273,6 +274,22 @@ def main():
                 elif event.key == pygame.K_SPACE:
                     motherboard.player_one_fire_pressed = True
                     motherboard.player_two_fire_pressed = True
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_0:
+                    motherboard.credit_pressed = False
+                elif event.key == pygame.K_1:
+                    motherboard.one_player_start_pressed = False
+                elif event.key == pygame.K_2:
+                    motherboard.two_player_start_pressed = False
+                elif event.key == pygame.K_LEFT:
+                    motherboard.player_one_left_pressed = False
+                    motherboard.player_two_left_pressed = False
+                elif event.key == pygame.K_RIGHT:
+                    motherboard.player_one_right_pressed = False
+                    motherboard.player_two_right_pressed = False
+                elif event.key == pygame.K_SPACE:
+                    motherboard.player_one_fire_pressed = False
+                    motherboard.player_two_fire_pressed = False
 
         # Each state marks a clock period.  2MHz = 2 million clock periods per second.  60Hz refresh means 33,333
         # states before a redraw.  The two interrupts occur approx halfway through the period and then right before
@@ -295,6 +312,7 @@ def main():
                 i = motherboard.cpu.do_interrupt(1)
                 cur_states += i
                 num_states += i
+                num_instructions += 1
             except:
                 deb.debug(num_states, num_instructions)
                 run = False
@@ -316,6 +334,7 @@ def main():
                 i = motherboard.cpu.do_interrupt(2)
                 cur_states += i
                 num_states += i
+                num_instructions += 1
             except:
                 deb.debug(num_states, num_instructions)
                 run = False
