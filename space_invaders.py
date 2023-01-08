@@ -7,7 +7,6 @@ import disassembler
 import debugger
 import motherboard
 
-
 def main():
     debug_mode = False
     pygame.init()
@@ -92,16 +91,17 @@ def main():
         # states before a redraw.  The two interrupts occur approx halfway through the period and then right before
         # the redraw.
         cur_states = 0
+
         while cur_states <= 16667 and run:
             try:
                 i = mb.cpu.cycle()
                 cur_states += i
                 num_states += i
                 num_instructions += 1
-            except:
+            except (Exception, ):
                 deb.debug(num_states, num_instructions)
                 run = False
-
+        
         # first interrupt
         if run:
             try:
@@ -110,7 +110,7 @@ def main():
                 cur_states += i
                 num_states += i
                 num_instructions += 1
-            except:
+            except (Exception, ):
                 deb.debug(num_states, num_instructions)
                 run = False
 
@@ -120,7 +120,7 @@ def main():
                 cur_states += i
                 num_states += i
                 num_instructions += 1
-            except:
+            except (Exception, ):
                 deb.debug(num_states, num_instructions)
                 run = False
 
@@ -131,7 +131,7 @@ def main():
                 cur_states += i
                 num_states += i
                 num_instructions += 1
-            except:
+            except (Exception, ):
                 deb.debug(num_states, num_instructions)
                 run = False
 
@@ -151,7 +151,7 @@ def main():
     print("End: {}".format(end_time))
     print("Duration: {} sec.".format(duration))
     print("Num instructions: {}".format(num_instructions))
-    print("Performance: {} cycles per second".format(num_states / duration))
+    print("Performance: {} states per second".format(num_states / duration))
 
     pygame.quit()
 

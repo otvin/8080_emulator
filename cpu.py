@@ -28,9 +28,6 @@ class I8080cpu:
     def __init__(self, motherboard):
 
         self.motherboard = motherboard
-        # for performance, store a pointer to the motherboard's memory.  Else, every cycle we have to do a hop
-        # to go motherboard -> memory
-        self.memory = self.motherboard.memory
 
         # program counter
         self.pc = 0x0
@@ -41,7 +38,7 @@ class I8080cpu:
         # There are seven 8-bit registers:  b, c, d, e, h, l, and the accumulator (a).  The opcodes that reference
         # them use the numbers 0-5 for b, c, d, e, h, l and 7 for a.  6 is not used.  For performance reasons it 
         # will be faster to access by an array, and there is an extra "register" created in the array at position 6.
-        self.registers = array('B', [0 for i in range(8)])
+        self.registers = array('B', [0 for _ in range(8)])
 
         # Tracking whether interrupts are enabled.  Interrupts can be disabled via the DI opcode, but the
         # interrupt bit is also cleared whenever an interrupt is triggered.  So interrupt handlers have to
@@ -299,7 +296,7 @@ class I8080cpu:
             # The content of the memory location, whose address is in registers H and L is moved to register r
             # Flags are not affected
             # 2 cycles, 7 states
-            self.registers[ddd] = self.memory[self.get_hl()]
+            self.registers[ddd] = self.motherboard.memory[self.get_hl()]
             states = 7
         else:  # ddd == 0x06 and sss != 0x06:
             # MOV M, r
@@ -307,7 +304,7 @@ class I8080cpu:
             # The content of register r is moved to the memory location whose address is in registers H and L
             # Flags are not affected
             # 2 cycles, 7 states
-            self.memory[self.get_hl()] = self.registers[sss]
+            self.motherboard.memory[self.get_hl()] = self.registers[sss]
             states = 7
         return 1, states
 
@@ -319,7 +316,7 @@ class I8080cpu:
             # The content of byte 2 of the instruction is moved to register r
             # Flags are not affected
             # 2 cycles, 7 states
-            self.registers[ddd] = self.memory[self.pc + 1]
+            self.registers[ddd] = self.motherboard.memory[self.pc + 1]
             states = 7
         else:
             # MVI M, data
@@ -328,7 +325,7 @@ class I8080cpu:
             # registers H and L
             # Flags are not affected
             # 3 cycles 10 states
-            self.memory[self.get_hl()] = self.memory[self.pc + 1]
+            self.motherboard.memory[self.get_hl()] = self.motherboard.memory[self.pc + 1]
             states = 10
         return 2, states
 
@@ -340,8 +337,8 @@ class I8080cpu:
         # Flags are not affected.
         # 3 cycles 10 states
         rp = (opcode >> 4) & 0x3
-        high_byte = self.memory[self.pc + 2]
-        low_byte = self.memory[self.pc + 1]
+        high_byte = self.motherboard.memory[self.pc + 2]
+        low_byte = self.motherboard.memory[self.pc + 1]
         self.set_register_pair[rp](high_byte, low_byte)
         return 3, 10
 
@@ -352,7 +349,7 @@ class I8080cpu:
         # instruction, is moved to register A.
         # Flags are not affected
         # 4 cycles 13 states
-        self.a = self.memory[(self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]]
+        self.a = self.motherboard.memory[(self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]]
         return 3, 13
 
     def _STA(self, opcode):
@@ -362,7 +359,7 @@ class I8080cpu:
         # and byte 3 of the instruction
         # Flags are not affected
         # 4 cycles 13 states
-        self.memory[(self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]] = self.a
+        self.motherboard.memory[(self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]] = self.a
         return 3, 13
 
     def _LHLD(self, opcode):
@@ -373,9 +370,9 @@ class I8080cpu:
         # moved to register H.
         # Flags are not affected
         # 5 cycles 16 states
-        addr = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
-        self.l = self.memory[addr]
-        self.h = self.memory[addr + 1]
+        addr = (self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]
+        self.l = self.motherboard.memory[addr]
+        self.h = self.motherboard.memory[addr + 1]
         return 3, 16
 
     def _SHLD(self, opcode):
@@ -385,9 +382,9 @@ class I8080cpu:
         # byte 3.  The content of register H is moved to the succeeding memory location.
         # Flags are not affected
         # 5 cycles 16 states
-        addr = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
-        self.memory[addr] = self.l
-        self.memory[addr + 1] = self.h
+        addr = (self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]
+        self.motherboard.memory[addr] = self.l
+        self.motherboard.memory[addr + 1] = self.h
         return 3, 16
 
     def _LDAX(self, opcode):
@@ -396,7 +393,7 @@ class I8080cpu:
         # The content of the memory location, whose address is in the register pair rp, is moved to register
         # A.  Note only register pairs rp=B (registers B and C) or rp=D (registers D and E) may be specified.
         # 2 cycles 7 states
-        self.a = self.memory[self.get_register_pair[(opcode >> 4) & 0x1]()]
+        self.a = self.motherboard.memory[self.get_register_pair[(opcode >> 4) & 0x1]()]
         return 1, 7
 
     def _STAX(self, opcode):
@@ -405,7 +402,7 @@ class I8080cpu:
         # The content of register A is moved to the memory location whose address is in the register pair rp.
         # Note: only register pairs rp=B (registers B and C) or rp=D (registers D and E) may be specified.
         # 2 cycles 7 states
-        self.memory[self.get_register_pair[(opcode >> 4) & 0x1]()] = self.a
+        self.motherboard.memory[self.get_register_pair[(opcode >> 4) & 0x1]()] = self.a
         return 1, 7
 
     def _XCHG(self, opcode):
@@ -479,7 +476,7 @@ class I8080cpu:
             # The content of the memory location whose address is contained in the H and L registers is added
             # to the content of the accumulator.  The result is placed in the accumulator.
             # 2 cycles 7 states
-            self.do_add(self.memory[self.get_hl()], False)
+            self.do_add(self.motherboard.memory[self.get_hl()], False)
             states = 7
         return 1, states
 
@@ -490,7 +487,7 @@ class I8080cpu:
         # result is placed in the accumulator.
         # All flags are affected
         # 2 cycles 7 states
-        self.do_add(self.memory[self.pc + 1], False)
+        self.do_add(self.motherboard.memory[self.pc + 1], False)
         return 2, 7
 
 
@@ -513,7 +510,7 @@ class I8080cpu:
             # in the accumulator.
             # All flags are affected
             # 2 cycles 7 states
-            self.do_add(self.memory[self.get_hl()], self.carry_flag)
+            self.do_add(self.motherboard.memory[self.get_hl()], self.carry_flag)
             states = 7
         return 1, states
 
@@ -524,7 +521,7 @@ class I8080cpu:
         # contents of the accumulator.  The result is placed in the accumulator.
         # All flags are affected
         # 2 cycles 7 states
-        self.do_add(self.memory[self.pc + 1], self.carry_flag)
+        self.do_add(self.motherboard.memory[self.pc + 1], self.carry_flag)
         return 2, 7
 
     def _SUB(self, opcode):
@@ -545,7 +542,7 @@ class I8080cpu:
             # from the content of the accumulator.  The result is placed in the accumulator.
             # All flags are affected
             # 2 cycles 7 states
-            self.do_subtraction(self.memory[self.get_hl()], False, True)
+            self.do_subtraction(self.motherboard.memory[self.get_hl()], False, True)
             states = 7
         return 1, states
 
@@ -556,7 +553,7 @@ class I8080cpu:
         # The result is placed in the accumulator.
         # All flags are affected
         # 2 cycles 7 states
-        self.do_subtraction(self.memory[self.pc + 1], False, True)
+        self.do_subtraction(self.motherboard.memory[self.pc + 1], False, True)
         return 2, 7
 
     def _SBB(self, opcode):
@@ -577,7 +574,7 @@ class I8080cpu:
             # and the content of the CY flag are both subtracted from the accumulator.  The result is placed
             # in the accumulator.
             # 2 cycles 7 states
-            self.do_subtraction(self.memory[self.get_hl()], self.carry_flag, True)
+            self.do_subtraction(self.motherboard.memory[self.get_hl()], self.carry_flag, True)
             states = 7
         return 1, states
 
@@ -587,7 +584,7 @@ class I8080cpu:
         # The content of the second byte of the instruction and the contents of the CY flag are both subtracted
         # from the accumulator.  The result is placed in the accumulator.
         # 2 cycles 7 states
-        self.do_subtraction(self.memory[self.pc + 1], self.carry_flag, True)
+        self.do_subtraction(self.motherboard.memory[self.pc + 1], self.carry_flag, True)
         return 2, 7
 
     def _INR(self, opcode):
@@ -606,8 +603,8 @@ class I8080cpu:
             # The content of the memory location whose address is contained in the H and L registers is incremented
             # by one.  Note: All condition flags except CY are affected.
             # 3 cycles 10 states
-            new_val = (self.memory[self.get_hl()] + 1) & 0xFF
-            self.memory[self.get_hl()] = new_val
+            new_val = (self.motherboard.memory[self.get_hl()] + 1) & 0xFF
+            self.motherboard.memory[self.get_hl()] = new_val
             states = 10
         self.set_zero_from_byte(new_val)
         self.set_sign_from_byte(new_val)
@@ -631,8 +628,8 @@ class I8080cpu:
             # The content of the memory location whose address is contained in the H and L registers is decremented
             # by one.  Note: All condition flags except CY are affected.
             # 3 cycles 10 states
-            new_val = (self.memory[self.get_hl()] - 1) & 0xFF
-            self.memory[self.get_hl()] = new_val
+            new_val = (self.motherboard.memory[self.get_hl()] - 1) & 0xFF
+            self.motherboard.memory[self.get_hl()] = new_val
             states = 10
 
         self.set_zero_from_byte(new_val)
@@ -728,7 +725,7 @@ class I8080cpu:
             # anded with the content of the accumulator.  The result is placed in the accumulator.  The CY flag is
             # cleared.
             # 2 cycles 7 states
-            second_byte = self.memory[self.get_hl()]
+            second_byte = self.motherboard.memory[self.get_hl()]
             states = 7
 
         # per https://retrocomputing.stackexchange.com/questions/14977/auxiliary-carry-and-the-intel-8080s-logical-instructions
@@ -748,7 +745,7 @@ class I8080cpu:
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
 
-        self.a &= self.memory[self.pc + 1]
+        self.a &= self.motherboard.memory[self.pc + 1]
         self.carry_flag = False
         self.auxiliary_carry_flag = False
         self.set_zero_from_byte(self.a)
@@ -774,7 +771,7 @@ class I8080cpu:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            self.a ^= self.memory[self.get_hl()]
+            self.a ^= self.motherboard.memory[self.get_hl()]
             states = 7
         self.auxiliary_carry_flag = False
         self.carry_flag = False
@@ -789,7 +786,7 @@ class I8080cpu:
         # The content of the second byte of the instruction is exclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        self.a ^= self.memory[self.pc + 1]
+        self.a ^= self.motherboard.memory[self.pc + 1]
         self.carry_flag = False
         self.auxiliary_carry_flag = False
         self.set_zero_from_byte(self.a)
@@ -814,7 +811,7 @@ class I8080cpu:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            self.a |= self.memory[self.get_hl()]
+            self.a |= self.motherboard.memory[self.get_hl()]
             states = 7
         self.auxiliary_carry_flag = False
         self.carry_flag = False
@@ -829,7 +826,7 @@ class I8080cpu:
         # The content of the second byte of the instruction is inclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        self.a |= self.memory[self.pc + 1]
+        self.a |= self.motherboard.memory[self.pc + 1]
         self.carry_flag = False
         self.auxiliary_carry_flag = False
         self.set_zero_from_byte(self.a)
@@ -856,7 +853,7 @@ class I8080cpu:
             # of the subtraction.  The Z flag is set to 1 if (A) = ((H)(L)).  The CY flag is set to 1 if (A) <
             # ((H)(L)).
             # 2 cycles 7 states
-            self.do_subtraction(self.memory[self.get_hl()], False, False)
+            self.do_subtraction(self.motherboard.memory[self.get_hl()], False, False)
             states = 7
         return 1, states
 
@@ -868,7 +865,7 @@ class I8080cpu:
         # flag is set to 1 if (A) < (byte 2).
         # NOTE: My inference is that A is unchanged, even though this isn't stated.
         # 2 cycles 7 states
-        self.do_subtraction(self.memory[self.pc + 1], False, False)
+        self.do_subtraction(self.motherboard.memory[self.pc + 1], False, False)
         return 2, 7
 
     def _RLC(self, opcode):
@@ -966,9 +963,8 @@ class I8080cpu:
             # 3 cycles 10 states
             # Because this updates PC, return 0 for pc_increments so that the cycle() function does not further
             # increment PC.
-            self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+            self.pc = (self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]
             pc_increments = 0
-            states = 10
         else:
             # JMP condition addr
             # If the specified condition is true, control is transferred to the instruction whose address is
@@ -976,13 +972,11 @@ class I8080cpu:
             # Flags are not affected
             # 3 cycles 10 states
             if CPU_CONDITION_TEST[(opcode >> 3) & 0x7](self):
-                self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+                self.pc = (self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]
                 pc_increments = 0
-                states = 15  # TODO fix later - this aligns with other emulator
             else:
                 pc_increments = 3  # skip past the 2 byte address
-                states = 10
-        return pc_increments, states
+        return pc_increments, 10
 
     def _CALL(self, opcode):
         global CPU_CONDITION_TEST
@@ -997,10 +991,10 @@ class I8080cpu:
             # So basically - (SP) gets PC + 3 / PC + 4, decrement SP, jump to the address specified in bytes 2 & 3
             # Flags are not affected.
             # 5 cycles 17 states
-            self.memory[self.sp - 1] = ((self.pc + 3) >> 8)
-            self.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
+            self.motherboard.memory[self.sp - 1] = ((self.pc + 3) >> 8)
+            self.motherboard.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
             self.sp -= 2
-            self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+            self.pc = (self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]
             pc_increments = 0
             states = 17
         else:
@@ -1011,10 +1005,10 @@ class I8080cpu:
             # If condition true:  5 cycles / 17 states
             # If condition false: 3 cycles / 11 states
             if CPU_CONDITION_TEST[(opcode >> 3) & 0x7](self):
-                self.memory[self.sp - 1] = ((self.pc + 3) >> 8)
-                self.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
+                self.motherboard.memory[self.sp - 1] = ((self.pc + 3) >> 8)
+                self.motherboard.memory[self.sp - 2] = ((self.pc + 3) & 0xff)
                 self.sp -= 2
-                self.pc = (self.memory[self.pc + 2] << 8) | self.memory[self.pc + 1]
+                self.pc = (self.motherboard.memory[self.pc + 2] << 8) | self.motherboard.memory[self.pc + 1]
                 pc_increments = 0
                 states = 17
             else:
@@ -1033,7 +1027,7 @@ class I8080cpu:
             # SP is incremented by 2.
             # Flags are not affected
             # 3 cycles 10 states
-            self.pc = (self.memory[self.sp + 1] << 8) | self.memory[self.sp]
+            self.pc = (self.motherboard.memory[self.sp + 1] << 8) | self.motherboard.memory[self.sp]
             self.sp += 2
             pc_increments = 0
             states = 10
@@ -1045,7 +1039,7 @@ class I8080cpu:
             # If condition true: 3 cycles / 11 states
             # If condition false: 1 cycles / 5 states
             if CPU_CONDITION_TEST[(opcode >> 3) & 0x7](self):
-                self.pc = (self.memory[self.sp + 1] << 8) | self.memory[self.sp]
+                self.pc = (self.motherboard.memory[self.sp + 1] << 8) | self.motherboard.memory[self.sp]
                 self.sp += 2
                 pc_increments = 0
                 states = 11
@@ -1066,8 +1060,8 @@ class I8080cpu:
         # 3 cycles 11 states
 
         # TODO This looks like a CALL, could refactor
-        self.memory[self.sp - 1] = (self.pc >> 8)
-        self.memory[self.sp - 2] = (self.pc & 0xff)
+        self.motherboard.memory[self.sp - 1] = (self.pc >> 8)
+        self.motherboard.memory[self.sp - 2] = (self.pc & 0xff)
         self.sp -= 2
 
         # This is RST-specific
@@ -1108,8 +1102,8 @@ class I8080cpu:
             # Flags are not affected
             # 3 cycles 11 states
             tmp = self.get_register_pair[rp]()
-            self.memory[self.sp - 1] = tmp >> 8
-            self.memory[self.sp - 2] = tmp & 0xFF
+            self.motherboard.memory[self.sp - 1] = tmp >> 8
+            self.motherboard.memory[self.sp - 2] = tmp & 0xFF
         else:
             # PUSH PSW
             # Push processor status word
@@ -1128,8 +1122,8 @@ class I8080cpu:
             #
             # Flags are not affected.
             # 3 cycles 11 states
-            self.memory[self.sp - 1] = self.a
-            self.memory[self.sp - 2] = self.get_byte_from_flags()
+            self.motherboard.memory[self.sp - 1] = self.a
+            self.motherboard.memory[self.sp - 2] = self.get_byte_from_flags()
         self.sp -= 2
         return 1, 11
 
@@ -1144,7 +1138,7 @@ class I8080cpu:
             # specified.
             # Flags are not affected
             # 3 cycles 10 states
-            self.set_register_pair[rp](self.memory[self.sp + 1], self.memory[self.sp])
+            self.set_register_pair[rp](self.motherboard.memory[self.sp + 1], self.motherboard.memory[self.sp])
         else:
             # POP PSW
             # Pop processor status word
@@ -1153,8 +1147,8 @@ class I8080cpu:
             # content of register SP is moved to register A.  The content of register SP is incremented by 2.
             # All Flags are affected as they are restored from the stack.
             # 3 cycles 10 states
-            self.set_flags_from_byte(self.memory[self.sp])
-            self.a = self.memory[self.sp + 1]
+            self.set_flags_from_byte(self.motherboard.memory[self.sp])
+            self.a = self.motherboard.memory[self.sp + 1]
         self.sp += 2
         return 1, 10
 
@@ -1169,10 +1163,10 @@ class I8080cpu:
         # 5 cycles 18 states
         tmp_h = self.h
         tmp_l = self.l
-        self.h = self.memory[self.sp + 1]
-        self.l = self.memory[self.sp]
-        self.memory[self.sp] = tmp_l
-        self.memory[self.sp + 1] = tmp_h
+        self.h = self.motherboard.memory[self.sp + 1]
+        self.l = self.motherboard.memory[self.sp]
+        self.motherboard.memory[self.sp] = tmp_l
+        self.motherboard.memory[self.sp + 1] = tmp_h
         return 1, 18
 
     def _SPHL(self, opcode):
@@ -1190,7 +1184,7 @@ class I8080cpu:
         # The data placed on the eight bit bi-directional data bus by the specified port is moved to register A.
         # Flags are not affected
         # 3 cycles 10 states
-        self.a = self.motherboard.handle_input(self.memory[self.pc + 1])
+        self.a = self.motherboard.handle_input(self.motherboard.memory[self.pc + 1])
         return 2, 10
 
     def _OUT(self, opcode):
@@ -1206,7 +1200,7 @@ class I8080cpu:
         # Port 3 - Sounds
         # Port 5 - Sounds
         # Port 6 - Watchdog
-        self.motherboard.handle_output(self.memory[self.pc + 1], self.a)
+        self.motherboard.handle_output(self.motherboard.memory[self.pc + 1], self.a)
         return 2, 10
 
     def _EI(self, opcode):
@@ -1282,7 +1276,7 @@ class I8080cpu:
 
     def cycle(self):
         if not self.halted:
-            opcode = self.memory[self.pc]
+            opcode = self.motherboard.memory[self.pc]
             # for performance reasons, we pass the opcode to the function that handles it, so we do not have to go
             # to memory twice to get it.
             flip_interrupts_on = self.enable_interrupts_after_next_instruction

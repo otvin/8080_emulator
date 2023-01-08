@@ -13,13 +13,29 @@ class OutputPortNotImplementedException(Exception):
 class InputPortNotImplementedException(Exception):
     pass
 
-
-class SpaceInvadersMotherBoard:
+class MotherBoard:
     def __init__(self):
+        # All motherboards need memory and a CPU.  The CPU needs access to the motherboard to do I/O.
+        self.memory = memory.Memory()
+        self.cpu = cpu.I8080cpu(self)
+        # The stack_pointer_start is only used by the debugger to display the contents of the stack.  The SP itself
+        # is set in code.  Override this in your motherboard if you want that feature of the debugger to work
+        # correctly.
+        self.stack_pointer_start = 0x0
+
+    def handle_input(self, port):
+        raise InputPortNotImplementedException("Input port {} not handled".format(port))
+
+    def handle_output(self, port, data):
+        raise OutputPortNotImplementedException("Output port {} not handled".format(port))
+
+
+class SpaceInvadersMotherBoard(MotherBoard):
+    def __init__(self):
+        super().__init__()
         self.memory = memory.SpaceInvadersMemory()
         self.video_card = videocard.SpaceInvadersScreen(self)
-        self.cpu = cpu.I8080cpu(self)  # The CPU needs to access the motherboard to get to graphics, sound, and memory.
-        self.stack_pointer_start = 0x2400  # needed for debugger to display the stack.  The SP itself gets set in code.
+        self.stack_pointer_start = 0x2400
 
         self.credit_pressed = False
         self.one_player_start_pressed = False

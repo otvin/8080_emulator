@@ -1,30 +1,32 @@
 import traceback
-import pygame
+from memory import IllegalWriteException, MemoryOutOfBoundsException
+
+
+def display_help():
+    print("Debugger commands")
+    print("     ?           Display this list")
+    print("     s           Execute next line")
+    print("     <enter>     Execute next line")
+    print("     s N         Execute next N lines, but will stop at a breakpoint")
+    print("     b           Puts a breakpoint at the current line")
+    print("     b 0xM       Puts a breakpoint at address M")
+    print("     d 0xM       Deletes breakpoint at address M")
+    print("     info b      list breakpoints")
+    print("     bt          Prints the current stack")
+    print("     r           Run program until next breakpoint")
+    print("     rr          Exit debugger and return to normal execution")
+    print("     q           Terminate program and debugger")
+    print("     int N       Send interrupt N to the system")
+    print("     x 0xM       display contents of memory address M")
+    print("     x 0xM N     display contents of N bytes of memory starting with address M")
+    print("     set 0xM 0xN set contents of memory address M with value N")
+    print("     draw        tell video card to render the current screen")
+
 
 class Debugger8080:
     def __init__(self, motherboard, disassembler):
         self.motherboard = motherboard
         self.disassembler = disassembler
-
-    def display_help(self):
-        print("Debugger commands")
-        print("     ?           Display this list")
-        print("     s           Execute next line")
-        print("     <enter>     Execute next line")
-        print("     s N         Execute next N lines, but will stop at a breakpoint")
-        print("     b           Puts a breakpoint at the current line")
-        print("     b 0xM       Puts a breakpoint at address M")
-        print("     d 0xM       Deletes breakpoint at address M")
-        print("     info b      list breakpoints")
-        print("     bt          Prints the current stack")
-        print("     r           Run program until next breakpoint")
-        print("     rr          Exit debugger and return to normal execution")
-        print("     q           Terminate program and debugger")
-        print("     int N       Send interrupt N to the system")
-        print("     x 0xM       display contents of memory address M")
-        print("     x 0xM N     display contents of N bytes of memory starting with address M")
-        print("     set 0xM 0xN set contents of memory address M with value N")
-        print("     draw        tell video card to render the current screen")
 
     def debug(self, total_states=0, total_instructions=0):
 
@@ -52,12 +54,12 @@ class Debugger8080:
                             num_states = int(x[1], 16)
                         else:
                             num_states = int(x[1])
-                    except:
+                    except ValueError:
                         print('invalid input {}'.format(x[1]))
                 for i in range(num_states):
                     try:
                         total_states += self.motherboard.cpu.cycle()
-                    except:
+                    except (Exception, ):
                         traceback.print_exc()
                     else:
                         total_instructions += 1
@@ -70,7 +72,7 @@ class Debugger8080:
                     which_int = int(x[1])
                     assert 0 <= which_int <= 7
                     total_states += self.motherboard.cpu.do_interrupt(which_int)
-                except:
+                except (Exception, ):  # Clears the PEP8 warning in Pycharm
                     traceback.print_exc()
                 else:
                     total_instructions += 1
@@ -82,7 +84,7 @@ class Debugger8080:
                     else:
                         try:
                             total_states += self.motherboard.cpu.cycle()
-                        except:
+                        except (Exception, ):  # Clears the PEP8 warning in Pycharm
                             traceback.print_exc()
                             t = False
                         else:
@@ -96,10 +98,12 @@ class Debugger8080:
                     val = int(x[2], 16)
                     # using direct access to the memory array so that this command can overwrite ROM
                     self.motherboard.memory.memory[mem_addr] = val
-                except:
+                except ValueError:
                     print("invalid input {}".format(next_cmd))
+                except (MemoryOutOfBoundsException, IllegalWriteException):
+                    print("invalid memory address {}".format(next_cmd))
             elif next_cmd[0] == "?":
-                self.display_help()
+                display_help()
             elif next_cmd == "bt":
                 if self.motherboard.cpu.sp == self.motherboard.stack_pointer_start:
                     print("Stack empty")
@@ -110,6 +114,7 @@ class Debugger8080:
                         print('0x{}\t0x{}{}'.format(hex(i)[2:].zfill(4).upper(),
                                                     hex(self.motherboard.memory[i + 1])[2:].zfill(2).upper(),
                                                     hex(self.motherboard.memory[i])[2:].zfill(2).upper()))
+                        print('\n')
             elif next_cmd[0] == "b":
                 x = next_cmd.split()
                 if len(x) > 1:
@@ -117,7 +122,7 @@ class Debugger8080:
                         bp = int(x[1], 16)
                         if bp not in breakpoint_list:
                             breakpoint_list.append(bp)
-                    except:
+                    except ValueError:
                         print('Invalid input: {}'.format(x[1]))
                 else:
                     breakpoint_list.append(self.motherboard.cpu.pc)
@@ -141,7 +146,7 @@ class Debugger8080:
                             print("No breakpoint set at {}".format(x[1]))
                         else:
                             breakpoint_list.remove(bp)
-                    except:
+                    except ValueError:
                         print("invalid input: {}".format(x[1]))
             elif next_cmd == "draw":
                 self.motherboard.video_card.draw()
@@ -164,8 +169,10 @@ class Debugger8080:
                                                     hex(self.motherboard.memory[addr])[2:].zfill(2).upper()))
                             addr += 1
                         print('\n')
-                    except:
+                    except ValueError:
                         print("invalid input: {}".format(next_cmd))
+                    except MemoryOutOfBoundsException:
+                        print("invalid memory address: {}".format(next_cmd))
             elif next_cmd[0] == "q":
                 running = False
                 continue_on_return = False

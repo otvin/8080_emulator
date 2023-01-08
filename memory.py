@@ -4,37 +4,20 @@ from array import array
 class IllegalWriteException(Exception):
     pass
 
+class MemoryOutOfBoundsException(Exception):
+    pass
 
-class SpaceInvadersMemory:
+class Memory:
     def __init__(self):
-        # per http://www.emulator101.com/memory-maps.html
-        # ROMS are loaded in 0x0000 - 0x1fff
-        # Working RAM is 0x2000 - 0x23ff
-        # VRAM is 0x2400-0x3fff
-
-        self.memory = array('B', [0 for i in range(0x4000)])
-        self.vram_start = 0x2400
-        self.load_roms()
+        self.memory = None
 
     def __getitem__(self, key):
-        assert 0x0 <= key <= 0x5fff
-        if key <= 0x3fff:
-            return self.memory[key]
-        else:
-            return self.memory[key - 0x2000]
+        return self.memory[key]
 
-    def __setitem__(self, key, newvalue):
-        assert 0x0 <= key <= 0x5fff
-        if 0x0 <= key <= 0x1fff:
-            # we can only write to the roms by writing to self.memory directly.  See load_roms() below.
-            raise IllegalWriteException("Cannot write to ROM value {}".format(key))
+    def __setitem__(self, key, new_value):
+        self.memory[key] = new_value
 
-        if key <= 0x3fff:
-            self.memory[key] = newvalue
-        else:
-            self.memory[key - 0x2000] = newvalue
-
-    def debug_dump(self, start=0x0, end=0x3fff):
+    def debug_dump(self, start, end):
         ret_str = "\n\nRAM:\n"
         if start % 32 != 0:
             tmp = start + (32 - (start % 32))
@@ -49,6 +32,41 @@ class SpaceInvadersMemory:
 
     def max_mem(self):
         return len(self.memory)
+
+
+class SpaceInvadersMemory(Memory):
+    def __init__(self):
+        # per http://www.emulator101.com/memory-maps.html
+        # ROMS are loaded in 0x0000 - 0x1fff
+        # Working RAM is 0x2000 - 0x23ff
+        # VRAM is 0x2400-0x3fff
+        super().__init__()
+        self.memory = array('B', [0 for _ in range(0x4000)])
+        self.vram_start = 0x2400
+        self.load_roms()
+
+    def __getitem__(self, key):
+        if not (0x0 <= key <= 0x5fff):
+            raise MemoryOutOfBoundsException
+        if key <= 0x3fff:
+            return self.memory[key]
+        else:
+            return self.memory[key - 0x2000]
+
+    def __setitem__(self, key, new_value):
+        if not (0x0 <= key <= 0x5fff):
+            raise MemoryOutOfBoundsException
+        if 0x0 <= key <= 0x1fff:
+            # we can only write to the roms by writing to self.memory directly.  See load_roms() below.
+            raise IllegalWriteException("Cannot write to ROM value {}".format(key))
+
+        if key <= 0x3fff:
+            self.memory[key] = new_value
+        else:
+            self.memory[key - 0x2000] = new_value
+
+    def debug_dump(self, start=0x0, end=0x3fff):
+        super().debug_dump(start, end)
 
     def load_roms(self):
         # per http://www.emulator101.com/memory-maps.html the ROMs are loaded
