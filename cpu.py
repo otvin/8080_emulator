@@ -40,7 +40,7 @@ class I8080cpu:
 
         # There are seven 8-bit registers:  b, c, d, e, h, l, and the accumulator (a).  The opcodes that reference
         # them use the numbers 0-5 for b, c, d, e, h, l and 7 for a.  6 is not used.  For performance reasons it 
-        # will be faster to access by an array, and there is an extra "register" created in the array.
+        # will be faster to access by an array, and there is an extra "register" created in the array at position 6.
         self.registers = array('B', [0 for i in range(8)])
 
         # Tracking whether interrupts are enabled.  Interrupts can be disabled via the DI opcode, but the
@@ -138,16 +138,12 @@ class I8080cpu:
     def set_parity_from_byte(self, n):
         # http://www.graphics.stanford.edu/~seander/bithacks.html#ParityParallel
         # Assumes n is a byte.  If we have to compute on a 16-bit value we need more shifts.
-        '''
         v = n ^ (n >> 4)
         v &= 0xf
         # Note the below shift treats 1 as odd and 0 as even; but the parity bit is set with False is odd and True
         # is even.
         self.parity_flag = (((0x6996 >> v) & 1) == 0)
-        '''
 
-        # TODO buggy version to try to be compatible with test emulator
-        self.parity_flag = ((n % 2) == 0)
 
     def set_zero_from_byte(self, n):
         if n == 0:
@@ -428,13 +424,13 @@ class I8080cpu:
 
     # ARITHMETIC GROUP #
     def do_add(self, byte, add_one_for_carry):
-        # There is likely a better performing way but this is easy to understand
+        # There is likely a better performing way to compute AC but this is easy to understand
         a_low = self.a & 0xF
         byte_low = byte & 0xF
         low_tmp = a_low + byte_low
         if add_one_for_carry:
             low_tmp += 1
-        self.auxiliary_carry_flag = low_tmp > 0xF
+        self.auxiliary_carry_flag = (low_tmp > 0xF)
 
         tmp = self.a + byte
         if add_one_for_carry:
@@ -445,6 +441,27 @@ class I8080cpu:
         self.set_zero_from_byte(self.a)
         self.set_sign_from_byte(self.a)
         self.set_parity_from_byte(self.a)
+
+    def do_subtraction(self, byte, subtract_one_for_borrow, store_value):
+        # Executes a subtraction.  If store_value is False, then it does a CMP and does not actually save the value
+        # in the accumulator.
+        # https://retrocomputing.stackexchange.com/questions/5953/carry-flag-in-8080-8085-subtraction/5956#5956
+        # Note that in CMP and Subtraction, the carry flag is set based on the unsigned values.
+        if subtract_one_for_borrow:
+            byte += 1
+            byte &= 0xFF # keeps it unsigned
+        tmp = (self.a - byte) & 0xFF
+        self.set_parity_from_byte(tmp)
+        self.set_zero_from_byte(tmp)
+        self.set_sign_from_byte(tmp)
+        if self.a < tmp:
+            self.carry_flag = True
+        else:
+            self.carry_flag = False
+        # TODO - this is wrong - needs to be set - but AC is only used with DAA so it's ok to be wrong for now
+        self.auxiliary_carry_flag = False
+        if store_value:
+            self.a = tmp
 
     def _ADD(self, opcode):
         sss = opcode & 0x7
@@ -595,7 +612,6 @@ class I8080cpu:
         self.set_zero_from_byte(new_val)
         self.set_sign_from_byte(new_val)
         self.set_parity_from_byte(new_val)
-        # TODO - Check This
         self.auxiliary_carry_flag = bool((new_val & 0x0F) == 0x00)
         return 1, states
 
@@ -633,9 +649,8 @@ class I8080cpu:
         # 1 cycle 5 states
         rp = (opcode >> 4) & 0x3
         self.set_register_pair_as_word[rp]((self.get_register_pair[rp]() + 1) & 0xFFFF)
-        # TODO fix this - aligning with other emulator
-        # return 1, 5
-        return 1, 6
+        return 1, 5
+
     def _DCX(self, opcode):
         # DCX rp
         # Decrement register pair
@@ -662,11 +677,9 @@ class I8080cpu:
         else:
             self.carry_flag = False
         self.set_hl_as_word(new_val & 0xFFFF)
-        # TODO - fix because this is aligning with debugger
-        # return 1, 10
-        return 1, 11
-    def _DAA(self, opcode):
+        return 1, 10
 
+    def _DAA(self, opcode):
         # DAA
         # Decimal Adjust Accumulator
         # The eight-bit number in the accumulator is adjusted to form two four-bit Binary-Coded-Decimal digits
@@ -823,27 +836,6 @@ class I8080cpu:
         self.set_sign_from_byte(self.a)
         self.set_parity_from_byte(self.a)
         return 2, 7
-
-    def do_subtraction(self, val, subtract_one_for_borrow, store_value):
-        # Executes a subtraction.  If store_value is False, then it does a CMP and does not actually save the value
-        # in the accumulator.
-        # https://retrocomputing.stackexchange.com/questions/5953/carry-flag-in-8080-8085-subtraction/5956#5956
-        # Note that in CMP and Subtraction, the carry flag is set based on the unsigned values.
-        if subtract_one_for_borrow:
-            val += 1
-            val &= 0xFF # keeps it unsigned
-        tmp = (self.a - val) & 0xFF
-        self.set_parity_from_byte(tmp)
-        self.set_zero_from_byte(tmp)
-        self.set_sign_from_byte(tmp)
-        if self.a < val:
-            self.carry_flag = True
-        else:
-            self.carry_flag = False
-        # TODO - this is wrong - needs to be set - but AC is only used with DAA so it's ok to be wrong for now
-        self.auxiliary_carry_flag = False
-        if store_value:
-            self.a = tmp
 
     def _CMP(self, opcode):
         sss = opcode & 0x7
@@ -1241,10 +1233,7 @@ class I8080cpu:
         # The processor is stopped.  The registers and flags are unaffected
         # 1 cycle 7 states
         self.halted = True
-        # HLT is not used in Space Invaders.  I do not want to have to test whether or not the CPU is halted
-        # on each cycle.  So raise the not implemented exception until we have reason to implement.
-        raise OpcodeNotImplementedException(opcode)
-        # return 1, 7
+        return 1, 7
 
     def _NOP(self, opcode):
         # NOP
@@ -1258,11 +1247,8 @@ class I8080cpu:
 
     def debug_dump(self, total_states = 0):
         ret_str = ""
-        '''
         ret_str += "PC: 0x{}\n".format(hex(self.pc).zfill(4).upper()[2:])
         ret_str += "A: 0x{}\n".format(hex(self.a).zfill(2).upper()[2:])
-        # Next line is useful when comparing to https://bluishcoder.co.nz/js8080/
-        ret_str += "Flags: 0x{}\n".format(hex(self.get_byte_from_flags() - 0x02).upper()[2:])
         ret_str += "Flags: "
         if self.zero_flag:
             ret_str += "Z, "
@@ -1291,56 +1277,20 @@ class I8080cpu:
         ret_str += "E: 0x{}\n".format(hex(self.e)[2:].zfill(2).upper())
         ret_str += "H: 0x{}\t".format(hex(self.h)[2:].zfill(2).upper())
         ret_str += "L: 0x{}\n".format(hex(self.l)[2:].zfill(2).upper())
-        '''
-        ret_str += " af   bc   de   hl   pc   sp  flags cycles\n"
-        ret_str += hex(self.a)[2:].zfill(2)
-        ret_str += hex(self.get_byte_from_flags() & 0xFD)[2:].zfill(2)
-        ret_str += ' '
-        ret_str += hex(self.b)[2:].zfill(2)
-        ret_str += hex(self.c)[2:].zfill(2)
-        ret_str += ' '
-        ret_str += hex(self.d)[2:].zfill(2)
-        ret_str += hex(self.e)[2:].zfill(2)
-        ret_str += ' '
-        ret_str += hex(self.h)[2:].zfill(2)
-        ret_str += hex(self.l)[2:].zfill(2)
-        ret_str += ' '
-        ret_str += hex(self.pc)[2:].zfill(4)
-        ret_str += ' '
-        ret_str += hex(self.sp)[2:].zfill(4)
-        ret_str += ' '
-        if self.zero_flag:
-            ret_str += 'z'
-        else:
-            ret_str += '.'
-        if self.sign_flag:
-            ret_str += 's'
-        else:
-            ret_str += '.'
-        if self.parity_flag:
-            ret_str += 'p'
-        else:
-            ret_str += '.'
-        ret_str += '.' # interrupt
-        if self.carry_flag:
-            ret_str += 'c'
-        else:
-            ret_str += '.'
-        ret_str += ' '
-        if total_states > 0:
-            ret_str += str(total_states % 16667)
-        ret_str += ' \n'
 
         return ret_str
 
     def cycle(self):
-        opcode = self.memory[self.pc]
-        # for performance reasons, we pass the opcode to the function that handles it, so we do not have to go
-        # to memory twice to get it.
-        flip_interrupts_on = self.enable_interrupts_after_next_instruction
-        pc_increments, num_cycles = self.opcode_lookup[opcode](opcode)
-        self.pc += pc_increments
-        if flip_interrupts_on:
-            self.interrupts_enabled = True
-            self.enable_interrupts_after_next_instruction  = False
-        return num_cycles
+        if not self.halted:
+            opcode = self.memory[self.pc]
+            # for performance reasons, we pass the opcode to the function that handles it, so we do not have to go
+            # to memory twice to get it.
+            flip_interrupts_on = self.enable_interrupts_after_next_instruction
+            pc_increments, num_cycles = self.opcode_lookup[opcode](opcode)
+            self.pc += pc_increments
+            if flip_interrupts_on:
+                self.interrupts_enabled = True
+                self.enable_interrupts_after_next_instruction  = False
+            return num_cycles
+        else:
+            return 0

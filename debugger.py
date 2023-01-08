@@ -1,4 +1,5 @@
 import traceback
+import pygame
 
 class Debugger8080:
     def __init__(self, motherboard, disassembler):
@@ -32,7 +33,7 @@ class Debugger8080:
         running = True
         continue_on_return = True  # do we keep running when we exit the debugger
         while running:
-            print(self.motherboard.cpu.debug_dump())
+            print(self.motherboard.cpu.debug_dump(total_states))
             print("\n")
             print("Instructions: {}\tStates:{}\n".format(total_instructions, total_states))
             print("Current +/- 10 bytes of instructions:")
@@ -62,6 +63,7 @@ class Debugger8080:
                         total_instructions += 1
                     if self.motherboard.cpu.pc in breakpoint_list:
                         break
+                self.motherboard.video_card.draw()
             elif next_cmd[0:3] == "int":
                 x = next_cmd.split()
                 try:
