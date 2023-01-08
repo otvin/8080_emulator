@@ -46,6 +46,10 @@ class SpaceInvadersMotherBoard:
         # DIP 7 controls whether coin info is displayed in the demo screen, 0 = On
         self.dip7 = False
 
+        # Shift register
+        # See: https://www.computerarcheology.com/Arcade/SpaceInvaders/Hardware.html#dedicated-shift-hardware
+        self.shift_register = 0x0000
+        self.shift_register_offset = 0
 
         # Sounds
         # Sounds sourced from: http://www.classicgaming.cc/classics/space-invaders/sounds except for extended play,
@@ -124,7 +128,10 @@ class SpaceInvadersMotherBoard:
             return ret_val
 
         elif port == 0x3:
-            raise InputPortNotImplementedException(port)
+            tmp = self.shift_register
+            tmp = (tmp >> (8 - self.shift_register_offset)) & 0xFF
+            return tmp
+
         else:
             raise InputPortNotImplementedException(port)
 
@@ -140,7 +147,9 @@ class SpaceInvadersMotherBoard:
         # Port 6 - Watchdog
         #
 
-        if port == 0x3:
+        if port == 0x2:
+            self.shift_register_offset = data & 0x07
+        elif port == 0x3:
             # https://www.computerarcheology.com/Arcade/SpaceInvaders/Hardware.html#output
             # bits 0-4 are sounds
             # bit 0 = UFO (repeats)
@@ -164,6 +173,10 @@ class SpaceInvadersMotherBoard:
                 # I believe that we should just ignore this because I think that "AMP enable" is for sound, but
                 # will wait until/if this is encountered in the code before I figure it out.
                 raise OutputPortNotImplementedException("Bit 5 of Port 3")
+        elif port == 0x4:
+            self.shift_register = self.shift_register >> 8
+            self.shift_register |= (data << 8)
+            print("After adding {}, shift register = {}".format(hex(data), hex(self.shift_register).zfill(4)))
         elif port == 0x5:
             # https://www.computerarcheology.com/Arcade/SpaceInvaders/Hardware.html#output
             # bits 0-4 are sounds
