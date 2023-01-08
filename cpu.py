@@ -428,14 +428,19 @@ class I8080cpu:
 
     # ARITHMETIC GROUP #
     def do_add(self, byte, add_one_for_carry):
+        # There is likely a better performing way but this is easy to understand
+        a_low = self.a & 0xF
+        byte_low = byte & 0xF
+        low_tmp = a_low + byte_low
+        if add_one_for_carry:
+            low_tmp += 1
+        self.auxiliary_carry_flag = low_tmp > 0xF
+
         tmp = self.a + byte
         if add_one_for_carry:
             tmp += 1
         self.carry_flag = bool(tmp > 0xFF)
         self.a = tmp & 0xFF
-
-        # TODO This is wrong
-        self.auxiliary_carry_flag = bool(self.a & 0x10)
 
         self.set_zero_from_byte(self.a)
         self.set_sign_from_byte(self.a)
@@ -590,6 +595,7 @@ class I8080cpu:
         self.set_zero_from_byte(new_val)
         self.set_sign_from_byte(new_val)
         self.set_parity_from_byte(new_val)
+        # TODO - Check This
         self.auxiliary_carry_flag = bool((new_val & 0x0F) == 0x00)
         return 1, states
 
@@ -834,6 +840,7 @@ class I8080cpu:
             self.carry_flag = True
         else:
             self.carry_flag = False
+        # TODO - this is wrong - needs to be set - but AC is only used with DAA so it's ok to be wrong for now
         self.auxiliary_carry_flag = False
         if store_value:
             self.a = tmp
