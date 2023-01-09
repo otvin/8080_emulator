@@ -34,6 +34,26 @@ class Memory:
         return len(self.memory)
 
 
+class Test8080SystemMemory(Memory):
+    def __init__(self):
+        super().__init__()
+        self.memory = array('B', [0 for _ in range(0x4000)])
+        self.load_rom()
+
+    def load_rom(self):
+        infile = open("TST8080.COM", "rb")
+        i = 0x100
+        done = False
+        while not done:
+            next_byte = infile.read(1)
+            if not next_byte:
+                done = True
+            else:
+                self.memory[i] = int.from_bytes(next_byte, 'big')
+                i += 1
+        infile.close()
+
+
 class SpaceInvadersMemory(Memory):
     def __init__(self):
         # per http://www.emulator101.com/memory-maps.html

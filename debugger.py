@@ -65,7 +65,6 @@ class Debugger8080:
                         total_instructions += 1
                     if self.motherboard.cpu.pc in breakpoint_list:
                         break
-                self.motherboard.video_card.draw()
             elif next_cmd[0:3] == "int":
                 x = next_cmd.split()
                 try:

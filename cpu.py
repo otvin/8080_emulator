@@ -129,7 +129,8 @@ class I8080cpu:
 
         # Next three are indexed based on valid values of rp.
         self.set_register_pair = [self.set_bc, self.set_de, self.set_hl, self.set_sp]
-        self.set_register_pair_as_word = [self.set_bc_as_word, self.set_de_as_word, self.set_hl_as_word]
+        self.set_register_pair_as_word = [self.set_bc_as_word, self.set_de_as_word, self.set_hl_as_word,
+                                          self.set_sp_as_word]
         self.get_register_pair = [self.get_bc, self.get_de, self.get_hl, self.get_sp]
 
     def set_parity_from_byte(self, n):
@@ -272,6 +273,9 @@ class I8080cpu:
 
     def set_sp(self, high, low):
         self.sp = (high << 8) | low
+
+    def set_sp_as_word(self, sp):
+        self.sp = sp
 
     def get_sp(self):
         # needed for things like _DAD
@@ -905,7 +909,7 @@ class I8080cpu:
         # 1 cycle 4 states
         old_carry_flag = self.carry_flag
         self.carry_flag = bool(self.a & 0x80)
-        self.a = self.a << 1
+        self.a = (self.a << 1) & 0xFF
         if old_carry_flag:
             self.a |= 0x01
         self.a &= 0xFF
@@ -1175,7 +1179,7 @@ class I8080cpu:
         # The contents of registers H and L (16 bits) are moved to register SP.
         # Flags are not affected
         # 1 cycle 5 states
-        self.sp = self.get_hl
+        self.sp = self.get_hl()
         return 1, 5
 
     def _IN(self, opcode):

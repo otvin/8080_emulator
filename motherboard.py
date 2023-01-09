@@ -1,3 +1,5 @@
+import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 import pygame
 import datetime
 from time import sleep
@@ -28,6 +30,26 @@ class MotherBoard:
 
     def handle_output(self, port, data):
         raise OutputPortNotImplementedException("Output port {} not handled".format(port))
+
+
+class Test8080SystemMotherBoard(MotherBoard):
+    def __init__(self):
+        super().__init__()
+        self.memory = memory.Test8080SystemMemory()
+        self.stack_pointer_start = 0x07DB
+        self.cpu.pc = 0x100  # CP/M programs load at 0x100
+
+    def handle_output(self, port, data):
+        if port == 0x0:
+            print(chr(data), end='')
+        else:
+            raise OutputPortNotImplementedException("Output port {} not handled".format(port))
+
+    def load_cpm_shim(self, shim):
+        i = 0x0
+        for byte in shim:
+            self.memory[i] = byte
+            i += 1
 
 
 class SpaceInvadersMotherBoard(MotherBoard):

@@ -1,4 +1,3 @@
-
 ddd_sss_translation = ["B", "C", "D", "E", "H", "L", None, "A"]
 ccc_translation = ["NZ", "Z", "NC", "C", "PO", "PE", "P", "M"]
 rp_translation = ["BC", "DE", "HL", "SP"]

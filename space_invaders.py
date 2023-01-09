@@ -14,7 +14,7 @@ def main():
 
     if len(sys.argv) >= 2:
         if sys.argv[1].lower() in ['-?', '-h', '-help']:
-            print('Usage: python3 space_invaders [options]')
+            print('Usage: python3 space_invaders.py [options]')
             print('Options include:')
             print('-h, -help, -?  = this list')
             print('-debug = start in the debugger')
@@ -27,7 +27,7 @@ def main():
             sys.exit()
         else:
             print('Invalid option: {}'.format(sys.argv[1]))
-            print('try "python3 space_invaders -?" for help\n')
+            print('try "python3 space_invaders.py -?" for help\n')
             sys.exit()
 
     run = True
