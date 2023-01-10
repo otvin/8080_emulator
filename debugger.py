@@ -104,12 +104,12 @@ class Debugger8080:
             elif next_cmd[0] == "?":
                 display_help()
             elif next_cmd == "bt":
-                if self.motherboard.cpu.sp == self.motherboard.stack_pointer_start:
+                if self.motherboard.cpu.sp == self.motherboard.cpu.stack_pointer_start:
                     print("Stack empty")
                 else:
                     print("Stack Addr & Value")
                     print("------------------")
-                    for i in range(self.motherboard.cpu.sp, self.motherboard.stack_pointer_start, 2):
+                    for i in range(self.motherboard.cpu.sp, self.motherboard.cpu.stack_pointer_start, 2):
                         print('0x{}\t0x{}{}'.format(hex(i)[2:].zfill(4).upper(),
                                                     hex(self.motherboard.memory[i + 1])[2:].zfill(2).upper(),
                                                     hex(self.motherboard.memory[i])[2:].zfill(2).upper()))

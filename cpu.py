@@ -34,6 +34,9 @@ class I8080cpu:
 
         # stack pointer
         self.sp = 0x0
+        # used for debugger to print the stack.  Stack is set in code.  Whenever there is an explicit set to SP,
+        # we will update this.  It will not get updated if you manually increment or decrement SP, only with a LD of SP
+        self.stack_pointer_start = 0x0
 
         # There are seven 8-bit registers:  b, c, d, e, h, l, and the accumulator (a).  The opcodes that reference
         # them use the numbers 0-5 for b, c, d, e, h, l and 7 for a.  6 is not used.  For performance reasons it 
@@ -273,9 +276,11 @@ class I8080cpu:
 
     def set_sp(self, high, low):
         self.sp = (high << 8) | low
+        self.stack_pointer_start = self.sp
 
     def set_sp_as_word(self, sp):
         self.sp = sp
+        self.stack_pointer_start = self.sp
 
     def get_sp(self):
         # needed for things like _DAD
