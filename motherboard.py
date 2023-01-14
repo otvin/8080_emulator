@@ -29,9 +29,9 @@ class MotherBoard:
 
 
 class Test8080SystemMotherBoard(MotherBoard):
-    def __init__(self):
+    def __init__(self, which_test="TST8080.COM"):
         super().__init__()
-        self.memory = memory.Test8080SystemMemory()
+        self.memory = memory.Test8080SystemMemory(which_test)
         self.cpu.pc = 0x100  # CP/M programs load at 0x100
 
     def handle_output(self, port, data):

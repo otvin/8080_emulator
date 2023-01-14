@@ -37,20 +37,32 @@ CPM_SHIM = [
 
 def main():
     debug_mode = False
-    mb = motherboard.Test8080SystemMotherBoard()
-    mb.load_cpm_shim(CPM_SHIM)
+    which_test = ""
     if len(sys.argv) >= 2:
         if sys.argv[1].lower() in ['-?', '-h', '-help']:
-            print('Usage: python3 test8080_system.py [options]')
-            print('Options include:')
-            print('-h, -help, -?  = this list')
+            print('Usage: python3 test8080_system.py [ROM name] [options]')
+            print('or python3 test8080_sytem.py -? for this list')
+            print('ROM name options:')
+            print('TST8080 or 8080EXER')
+            print('Options:')
             print('-debug = start in the debugger')
-        elif sys.argv[1].lower() == '-debug':
-            debug_mode = True
+        elif sys.argv[1].lower() in['tst8080', '8080exer', '8080pre', 'cputest']:
+            which_test = sys.argv[1].upper() + '.COM'
         else:
-            print('Invalid option: {}'.format(sys.argv[1]))
+            print('Invalid ROM name.  Valid ROMs are TST8080, 8080PRE, CPUTEST, and 8080EXER')
+            sys.exit()
+        if len(sys.argv) >= 3:
+            if sys.argv[2].lower() == '-debug':
+                debug_mode = True
+            else:
+                print('Invalid option.  Only valid option is -debug')
+    else:
+            print('Invalid options.')
             print('try "python3 test8080_system.py -?" for help\n')
             sys.exit()
+
+    mb = motherboard.Test8080SystemMotherBoard(which_test)
+    mb.load_cpm_shim(CPM_SHIM)
 
     run = True
     num_states = 0

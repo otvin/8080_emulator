@@ -35,13 +35,13 @@ class Memory:
 
 
 class Test8080SystemMemory(Memory):
-    def __init__(self):
+    def __init__(self, which_test="TST8080.COM"):
         super().__init__()
-        self.memory = array('B', [0 for _ in range(0x4000)])
-        self.load_rom()
+        self.memory = array('B', [0 for _ in range(0x10000)])
+        self.load_rom(which_test)
 
-    def load_rom(self):
-        infile = open("TST8080.COM", "rb")
+    def load_rom(self, which_test):
+        infile = open(which_test, "rb")
         i = 0x100
         done = False
         while not done:

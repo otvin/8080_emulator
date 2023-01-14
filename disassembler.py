@@ -100,6 +100,9 @@ class Disassembler8080:
         print(self.disassemble(0x19D1, 0x1A10))
         print(self.disassemble(0x1A32, 0x1A90))
 
+    def disassemble_cputest(self):
+        print(self.disassemble(0x0, 0x1301))
+
 
     '''
     NOTE: The disassembly of many instructions shows a mnemonic followed by a second mnemonic in a comment.  E.G.

@@ -136,7 +136,18 @@ class I8080cpu:
                                           self.set_sp_as_word]
         self.get_register_pair = [self.get_bc, self.get_de, self.get_hl, self.get_sp]
 
-    def set_parity_from_byte(self, n):
+    def set_zero_sign_parity_from_byte(self, n):
+        if n == 0:
+            self.zero_flag = True
+        else:
+            self.zero_flag = False
+
+        # Per the Assembly Language Programming Manual, the sign flag is set to the value of bit 7
+        if n & 0x80:
+            self.sign_flag = True
+        else:
+            self.sign_flag = False
+
         # http://www.graphics.stanford.edu/~seander/bithacks.html#ParityParallel
         # Assumes n is a byte.  If we have to compute on a 16-bit value we need more shifts.
         v = n ^ (n >> 4)
@@ -144,20 +155,6 @@ class I8080cpu:
         # Note the below shift treats 1 as odd and 0 as even; but the parity bit is set with False is odd and True
         # is even.
         self.parity_flag = (((0x6996 >> v) & 1) == 0)
-
-
-    def set_zero_from_byte(self, n):
-        if n == 0:
-            self.zero_flag = True
-        else:
-            self.zero_flag = False
-
-    def set_sign_from_byte(self, n):
-        # Per the Assembly Language Programming Manual, the sign flag is set to the value of bit 7
-        if n & 0x80:
-            self.sign_flag = True
-        else:
-            self.sign_flag = False
 
     def get_byte_from_flags(self):
         # Because there are only 5 condition flags, PUSH PWS formats the flags into an eight-bit byte by setting bits 3
@@ -444,9 +441,7 @@ class I8080cpu:
         self.carry_flag = bool(tmp > 0xFF)
         self.a = tmp & 0xFF
 
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
+        self.set_zero_sign_parity_from_byte(self.a)
 
     def do_subtraction(self, byte, subtract_one_for_borrow, store_value):
         # Executes a subtraction.  If store_value is False, then it does a CMP and does not actually save the value
@@ -457,15 +452,18 @@ class I8080cpu:
             byte += 1
             byte &= 0xFF # keeps it unsigned
         tmp = (self.a - byte) & 0xFF
-        self.set_parity_from_byte(tmp)
-        self.set_zero_from_byte(tmp)
-        self.set_sign_from_byte(tmp)
+        self.set_zero_sign_parity_from_byte(tmp)
         if self.a < tmp:
             self.carry_flag = True
         else:
             self.carry_flag = False
-        # TODO - this is wrong - needs to be set - but AC is only used with DAA so it's ok to be wrong for now
-        self.auxiliary_carry_flag = False
+
+        # the auxiliary_carry_flag is set as if it were addition of the twos-complement of byte.
+        twos_complement = ((~byte) + 1) & 0xFF
+        a_low = self.a & 0xF
+        byte_low = twos_complement & 0xF
+        self.auxiliary_carry_flag = bool(a_low + byte_low > 0xF)
+
         if store_value:
             self.a = tmp
 
@@ -615,9 +613,7 @@ class I8080cpu:
             new_val = (self.motherboard.memory[self.get_hl()] + 1) & 0xFF
             self.motherboard.memory[self.get_hl()] = new_val
             states = 10
-        self.set_zero_from_byte(new_val)
-        self.set_sign_from_byte(new_val)
-        self.set_parity_from_byte(new_val)
+        self.set_zero_sign_parity_from_byte(new_val)
         self.auxiliary_carry_flag = bool((new_val & 0x0F) == 0x00)
         return 1, states
 
@@ -641,11 +637,9 @@ class I8080cpu:
             self.motherboard.memory[self.get_hl()] = new_val
             states = 10
 
-        self.set_zero_from_byte(new_val)
-        self.set_sign_from_byte(new_val)
-        self.set_parity_from_byte(new_val)
+        self.set_zero_sign_parity_from_byte(new_val)
         # Based on what I see in other emulators (e.g. MAME), the AC flag is set if a borrow was needed.
-        self.auxiliary_carry_flag = bool((new_val & 0xF) == 0xF)
+        self.auxiliary_carry_flag = not bool((new_val & 0xF) == 0xF)
         return 1, states
 
     def _INX(self, opcode):
@@ -709,13 +703,31 @@ class I8080cpu:
             self.carry_flag = tmp > 0xFF
             self.a = tmp & 0xFF
         self.auxiliary_carry_flag = bool(self.a & 0x10)
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
+        self.set_zero_sign_parity_from_byte(self.a)
         return 1, 4
 
 
     # LOGICAL GROUP
+
+    def do_and(self, byte):
+        # per https://retrocomputing.stackexchange.com/questions/14977/auxiliary-carry-and-the-intel-8080s-logical-instructions
+        # The Auxiliary Carry flag is set to the or of bit 3 (0x08) of the 2 values involved in the AND operation.
+        self.auxiliary_carry_flag = bool((self.a | byte) & 0x08)
+        self.a &= byte
+        self.carry_flag = False
+        self.set_zero_sign_parity_from_byte(self.a)
+
+    def do_xor(self, byte):
+        self.a ^= byte
+        self.auxiliary_carry_flag = False
+        self.carry_flag = False
+        self.set_zero_sign_parity_from_byte(self.a)
+
+    def do_or(self, byte):
+        self.a |= byte
+        self.auxiliary_carry_flag = False
+        self.carry_flag = False
+        self.set_zero_sign_parity_from_byte(self.a)
 
     def _ANA(self, opcode):
         sss = opcode & 0x7
@@ -725,7 +737,7 @@ class I8080cpu:
             # The content of register r is logically anded with teh content of the accumulator.  The result is
             # placed in the accumulator.  The CY flag is cleared.
             # 1 cycle 4 states
-            second_byte = self.registers[sss]
+            self.do_and(self.registers[sss])
             states = 4
         else:
             # ANA M
@@ -734,17 +746,8 @@ class I8080cpu:
             # anded with the content of the accumulator.  The result is placed in the accumulator.  The CY flag is
             # cleared.
             # 2 cycles 7 states
-            second_byte = self.motherboard.memory[self.get_hl()]
+            self.do_and(self.motherboard.memory[self.get_hl()])
             states = 7
-
-        # per https://retrocomputing.stackexchange.com/questions/14977/auxiliary-carry-and-the-intel-8080s-logical-instructions
-        # The Auxiliary Carry flag is set to the or of bit 3 (0x08) of the 2 values involved in the AND operation.
-        self.auxiliary_carry_flag = bool((self.a | second_byte) & 0x08)
-        self.a &= second_byte
-        self.carry_flag = False
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
         return 1, states
 
     def _ANI(self, opcode):
@@ -752,16 +755,12 @@ class I8080cpu:
         # AND immediate
         # The content of the second byte of the instruction is logically anded with the contents of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
+        # Note there is a conflict between the Assembly Language Programming Manual (which says the AC flag is
+        # set same as ANA) and the Intel 8080 MIcrocomputer Systems User's Manual which says the AC flag is cleared.
+        # The CPU test suites expect it to be set so I am doing it that way.
         # 2 cycles 7 states
-
-        self.a &= self.motherboard.memory[self.pc + 1]
-        self.carry_flag = False
-        self.auxiliary_carry_flag = False
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
+        self.do_and(self.motherboard.memory[self.pc + 1])
         return 2, 7
-
 
     def _XRA(self, opcode):
         sss = opcode & 0x7
@@ -771,7 +770,7 @@ class I8080cpu:
             # The content of register r is logically exclusive-or'd with the content of the accumulator.  The result
             # is placed in the accumulator.  The CY and AC flags are cleared.
             # 1 cycle 4 states
-            self.a ^= self.registers[sss]
+            self.do_xor(self.registers[sss])
             states = 4
         else:
             # XRA M
@@ -780,13 +779,8 @@ class I8080cpu:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            self.a ^= self.motherboard.memory[self.get_hl()]
+            self.do_xor(self.motherboard.memory[self.get_hl()])
             states = 7
-        self.auxiliary_carry_flag = False
-        self.carry_flag = False
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
         return 1, states
 
     def _XRI(self, opcode):
@@ -795,12 +789,7 @@ class I8080cpu:
         # The content of the second byte of the instruction is exclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        self.a ^= self.motherboard.memory[self.pc + 1]
-        self.carry_flag = False
-        self.auxiliary_carry_flag = False
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
+        self.do_xor(self.motherboard.memory[self.pc + 1])
         return 2, 7
 
     def _ORA(self, opcode):
@@ -811,7 +800,7 @@ class I8080cpu:
             # The content of register r is logically inclusive-or'd with the content of the accumulator.  The result
             # is placed in the accumulator.  The CY and AC flags are cleared.
             # 1 cycle 4 states
-            self.a |= self.registers[sss]
+            self.do_or(self.registers[sss])
             states = 4
         else:
             # ORA M
@@ -820,13 +809,8 @@ class I8080cpu:
             # OR'd with the content of the accumulator.  The result is placed in the accumulator.  The AC and CY
             # flags are cleared.
             # 2 cycles 7 states
-            self.a |= self.motherboard.memory[self.get_hl()]
+            self.do_or(self.motherboard.memory[self.get_hl()])
             states = 7
-        self.auxiliary_carry_flag = False
-        self.carry_flag = False
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
         return 1, states
 
     def _ORI(self, opcode):
@@ -835,12 +819,7 @@ class I8080cpu:
         # The content of the second byte of the instruction is inclusive-OR'd with the content of the
         # accumulator.  The result is placed in the accumulator.  The CY and AC flags are cleared.
         # 2 cycles 7 states
-        self.a |= self.motherboard.memory[self.pc + 1]
-        self.carry_flag = False
-        self.auxiliary_carry_flag = False
-        self.set_zero_from_byte(self.a)
-        self.set_sign_from_byte(self.a)
-        self.set_parity_from_byte(self.a)
+        self.do_or(self.motherboard.memory[self.pc + 1])
         return 2, 7
 
     def _CMP(self, opcode):
@@ -1235,6 +1214,7 @@ class I8080cpu:
         # Halt
         # The processor is stopped.  The registers and flags are unaffected
         # 1 cycle 7 states
+        print ("HALT")
         self.halted = True
         return 1, 7
 
