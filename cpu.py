@@ -702,7 +702,6 @@ class I8080cpu:
             tmp = self.a + 0x60
             self.carry_flag = tmp > 0xFF
             self.a = tmp & 0xFF
-        self.auxiliary_carry_flag = bool(self.a & 0x10)
         self.set_zero_sign_parity_from_byte(self.a)
         return 1, 4
 
