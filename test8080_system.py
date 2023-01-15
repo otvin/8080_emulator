@@ -1,4 +1,5 @@
 import sys
+import datetime
 import disassembler
 import debugger
 import motherboard
@@ -46,10 +47,10 @@ def main():
             print('TST8080 or 8080EXER')
             print('Options:')
             print('-debug = start in the debugger')
-        elif sys.argv[1].lower() in['tst8080', '8080exer', '8080pre', 'cputest']:
+        elif sys.argv[1].lower() in['tst8080', '8080exm', '8080pre', 'cputest']:
             which_test = sys.argv[1].upper() + '.COM'
         else:
-            print('Invalid ROM name.  Valid ROMs are TST8080, 8080PRE, CPUTEST, and 8080EXER')
+            print('Invalid ROM name.  Valid ROMs are TST8080, 8080PRE, CPUTEST, and 8080EXM')
             sys.exit()
         if len(sys.argv) >= 3:
             if sys.argv[2].lower() == '-debug':
@@ -63,7 +64,7 @@ def main():
 
     mb = motherboard.Test8080SystemMotherBoard(which_test)
     mb.load_cpm_shim(CPM_SHIM)
-
+    start_time = datetime.datetime.now()
     run = True
     num_states = 0
     num_instructions = 0
@@ -74,7 +75,7 @@ def main():
         num_states += i
         num_instructions += j
 
-    while run:
+    while run and not(mb.cpu.halted):
         try:
             i = mb.cpu.cycle()
             num_states += i
@@ -82,6 +83,15 @@ def main():
         except (Exception, ):
             deb.debug(num_states, num_instructions)
             run = False
+
+    end_time = datetime.datetime.now()
+    duration = (end_time - start_time).total_seconds()
+
+    print("Start: {}".format(start_time))
+    print("End: {}".format(end_time))
+    print("Duration: {} sec.".format(duration))
+    print("Num instructions: {}".format(num_instructions))
+    print("Performance: {} states per second".format(num_states / duration))
 
 if __name__ == "__main__":
     # call the main function
