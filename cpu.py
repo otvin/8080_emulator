@@ -715,6 +715,21 @@ class I8080cpu:
         # flag is set, 6 is added to the most significant 4 bits of the accumulator.
         # NOTE: All flags are affected
         # 1 cycle 4 states
+
+        # copying the MAME logic
+        wz = self.a
+        if (self.auxiliary_carry_flag or (self.a & 0xF > 0x9)):
+            wz += 0x06
+        if (self.carry_flag or (self.a > 0x99)):
+            wz += 0x60
+        self.carry_flag = bool(self.carry_flag or (self.a > 0x99))
+        self.auxiliary_carry_flag = bool((self.a ^ wz) & 0x10)
+        self.a = wz & 0xFF
+        self.set_zero_sign_parity_from_byte(self.a)
+
+
+
+        '''
         if (self.a & 0x0F) > 0x09 or self.auxiliary_carry_flag:
             # if we don't go through this branch, self.auxiliary_carry_flag is already false and cannot become true,
             # so we only need to set it in this branch.
@@ -728,6 +743,7 @@ class I8080cpu:
             self.carry_flag = tmp > 0xFF
             self.a = tmp & 0xFF
         self.set_zero_sign_parity_from_byte(self.a)
+        '''
         return 1, 4
 
 
