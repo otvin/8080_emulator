@@ -428,15 +428,7 @@ class I8080cpu:
     # ARITHMETIC GROUP #
     def do_add(self, byte, add_one_for_carry):
         # taking logic from MAME emulator
-        q = self.a + byte
-        if add_one_for_carry:
-            q += 1
-        self.set_zero_sign_parity_from_byte(q & 0xFF)
-        self.carry_flag = bool((q >> 8) & 0x01)
-        self.auxiliary_carry_flag = bool((self.a ^ q ^ byte) & 0x10)
-        self.a = q & 0xFF
 
-        '''
         # There is likely a better performing way to compute AC but this is easy to understand
         a_low = self.a & 0xF
         byte_low = byte & 0xF
@@ -452,7 +444,7 @@ class I8080cpu:
         self.a = tmp & 0xFF
 
         self.set_zero_sign_parity_from_byte(self.a)
-        '''
+
 
 
     def do_subtraction(self, byte, subtract_one_for_borrow, store_value):
@@ -461,36 +453,19 @@ class I8080cpu:
         # https://retrocomputing.stackexchange.com/questions/5953/carry-flag-in-8080-8085-subtraction/5956#5956
         # Note that in CMP and Subtraction, the carry flag is set based on the unsigned values.
 
-        # taking logic from MAME emulator
-        q = self.a - byte
         if subtract_one_for_borrow:
-            q -= 1
+            tmp = byte + 1
+        else:
+            tmp = byte
+        self.carry_flag = bool(self.a < tmp)
+        q = self.a - tmp
         self.set_zero_sign_parity_from_byte(q & 0xFF)
-        self.carry_flag = bool((q >> 8) & 0x01)
+
+        # Taking logic from MAME emulator
         self.auxiliary_carry_flag = bool((~(self.a ^ q ^ byte)) & 0x10)
         if store_value:
             self.a = q & 0xFF
 
-        '''
-        if subtract_one_for_borrow:
-            byte += 1
-            byte &= 0xFF # keeps it unsigned
-        tmp = (self.a - byte) & 0xFF
-        self.set_zero_sign_parity_from_byte(tmp)
-        if self.a < tmp:
-            self.carry_flag = True
-        else:
-            self.carry_flag = False
-
-        # the auxiliary_carry_flag is set as if it were addition of the twos-complement of byte.
-        twos_complement = ((~byte) + 1) & 0xFF
-        a_low = self.a & 0xF
-        byte_low = twos_complement & 0xF
-        self.auxiliary_carry_flag = bool(a_low + byte_low > 0xF)
-
-        if store_value:
-            self.a = tmp
-        '''
 
     def _ADD(self, opcode):
         sss = opcode & 0x7
