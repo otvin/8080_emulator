@@ -427,8 +427,6 @@ class I8080cpu:
 
     # ARITHMETIC GROUP #
     def do_add(self, byte, add_one_for_carry):
-        # taking logic from MAME emulator
-
         # There is likely a better performing way to compute AC but this is easy to understand
         a_low = self.a & 0xF
         byte_low = byte & 0xF
@@ -465,7 +463,6 @@ class I8080cpu:
         self.auxiliary_carry_flag = bool((~(self.a ^ q ^ byte)) & 0x10)
         if store_value:
             self.a = q & 0xFF
-
 
     def _ADD(self, opcode):
         sss = opcode & 0x7
