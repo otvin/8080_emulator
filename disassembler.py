@@ -287,7 +287,7 @@ class Disassembler8080:
 
     def _DAD(self, opcode, cur_addr):
         rp = (opcode >> 4) & 0x3
-        ret_str = "ADD HL,{}\t; DAD rp".format(rp_translation[rp])
+        ret_str = "ADD HL, {}\t; DAD rp".format(rp_translation[rp])
         return ret_str, 1, 3, 10
 
     def _DAA(self, opcode, cur_addr):
