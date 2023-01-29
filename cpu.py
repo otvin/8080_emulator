@@ -157,7 +157,7 @@ class I8080cpu:
         self.parity_flag = (((0x6996 >> v) & 1) == 0)
 
     def get_byte_from_flags(self):
-        # Because there are only 5 condition flags, PUSH PWS formats the flags into an eight-bit byte by setting bits 3
+        # Because there are only 5 condition flags, PUSH PSW formats the flags into an eight-bit byte by setting bits 3
         # and 5 always to zero and bit one is always set to 1.
         retval = 0x02  # bits 3 and 5 zero, bit one is 1.
         if self.sign_flag:
