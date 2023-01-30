@@ -466,7 +466,7 @@ class Disassembler8080:
         return "NOP", 1, 1, 4
 
     def InvalidOpCode(self, opcode, cur_addr):
-        raise InvalidOpcodeException("Invalid opcode: {}".format(opcode))
+        return "??", 1, 1, 4
 
     def disassemble(self, start_addr, max_addr, point_addr=None, breakpoint_list=None):
         # point_addr = address which will receive a pointer next to it
