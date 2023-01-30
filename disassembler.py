@@ -473,7 +473,24 @@ class Disassembler8080:
         if breakpoint_list is None:
             breakpoint_list = []
 
-        cur_addr = start_addr
+        # there is an issue where if the start address points to a valid opcode, but that address is actually a second
+        # or third byte of a multi-byte opcode or is data, then the actual address of the point_addr may get skipped,
+        # leading to a very confusing view.
+        real_start_addr = start_addr;
+        if (point_addr >= (start_addr + 2)) and point_addr <= max_addr:
+            found = False
+            while not found and (real_start_addr < point_addr):
+                cur_addr = real_start_addr
+                while cur_addr <= point_addr:
+                    opcode = self.memory[cur_addr]
+                    res = self.opcode_lookup[opcode](opcode, cur_addr)
+                    cur_addr += res[1]
+                    if cur_addr == point_addr:
+                        found = True
+                if not found:
+                    real_start_addr += 1
+
+        cur_addr = real_start_addr
         ret_str = ""
         while cur_addr <= max_addr:
             opcode = self.memory[cur_addr]
