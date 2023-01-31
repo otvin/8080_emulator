@@ -103,7 +103,7 @@ class Debugger8080:
                 display_help()
             elif next_cmd == "bt":
                 if self.motherboard.cpu.sp == self.motherboard.cpu.stack_pointer_start:
-                    print("Stack empty")
+                    print("Stack empty\n\n")
                 else:
                     print("Stack Addr & Value")
                     print("------------------")
@@ -111,7 +111,7 @@ class Debugger8080:
                         print('0x{}\t0x{}{}'.format(hex(i)[2:].zfill(4).upper(),
                                                     hex(self.motherboard.memory[i + 1])[2:].zfill(2).upper(),
                                                     hex(self.motherboard.memory[i])[2:].zfill(2).upper()))
-                        print('\n')
+                    print('\n')
             elif next_cmd[0] == "b":
                 x = next_cmd.split()
                 if len(x) > 1:
