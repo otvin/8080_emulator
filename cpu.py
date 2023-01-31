@@ -1224,8 +1224,8 @@ class I8080cpu:
 
     def debug_dump(self, total_states = 0):
         ret_str = ""
-        ret_str += "PC: 0x{}\n".format(hex(self.pc).zfill(4).upper()[2:])
-        ret_str += "A: 0x{}\n".format(hex(self.a).zfill(2).upper()[2:])
+        ret_str += "PC: 0x{}\n".format(hex(self.pc)[2:].zfill(4).upper())
+        ret_str += "A: 0x{}\n".format(hex(self.a)[2:].zfill(2).upper())
         ret_str += "Flags: "
         if self.zero_flag:
             ret_str += "Z, "
@@ -1247,7 +1247,7 @@ class I8080cpu:
             ret_str += "Aux C\n"
         else:
             ret_str += "Aux NC\n"
-        ret_str += "SP: 0x{}\n".format(hex(self.sp).upper()[2:])
+        ret_str += "SP: 0x{}\n".format(hex(self.sp)[2:].zfill(4).upper())
         ret_str += "B: 0x{}\t".format(hex(self.b)[2:].zfill(2).upper())
         ret_str += "C: 0x{}\n".format(hex(self.c)[2:].zfill(2).upper())
         ret_str += "D: 0x{}\t".format(hex(self.d)[2:].zfill(2).upper())

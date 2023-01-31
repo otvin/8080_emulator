@@ -36,13 +36,11 @@ class Debugger8080:
         continue_on_return = True  # do we keep running when we exit the debugger
         while running:
             print(self.motherboard.cpu.debug_dump(total_states))
-            print("\n")
             print("Instructions: {}\tStates:{}\n".format(total_instructions, total_states))
             print("Current +/- 10 bytes of instructions:")
             start = max(0, self.motherboard.cpu.pc - 10)
             end = min([self.motherboard.cpu.pc + 10, max_mem])
             print(self.disassembler.disassemble(start, end, self.motherboard.cpu.pc, breakpoint_list))
-            print("\n")
 
             next_cmd = input("> ").lower()
             if len(next_cmd) == 0 or (next_cmd[0] == "s" and next_cmd[0:3] != "set"):
