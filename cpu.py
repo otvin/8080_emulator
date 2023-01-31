@@ -1036,7 +1036,7 @@ class I8080cpu:
         # The high-order eight bits of the next instruction address are moved to the memory location whose
         # address is one less than the content of register SP.  THe low-order eight bits of the next instruction
         # address are moved to the memory location whose address is two less than the content of register SP.
-        # THe content of register SP is decremented by two.  Control is transferred to the instruction whose
+        # The content of register SP is decremented by two.  Control is transferred to the instruction whose
         # address is 8 times the content of NNN.
         # Note the shortcut here is to set PC = (opcode & 0x38)
         # 3 cycles 11 states
